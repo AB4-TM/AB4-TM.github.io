@@ -13,6 +13,7 @@ let clearButton = document.getElementById('clrBtn');
 //let attCheckbox = document.getElementById('attenuator');
 //let hz1600Checkbox = document.getElementById('HZ1600');
 let readTuneCoeffButton = document.getElementById('KALIBR_READ');
+let auto1kHzButton = document.getElementById('AUTO_1KHZ');
 
 let vibrospeedLabel = document.getElementById('vibrospeed');
 let graphDiv = document.getElementById('div_v');
@@ -109,6 +110,13 @@ readTuneCoeffButton.addEventListener('click', function() {
   coefficientValueCharacteristic.readValue();
 });
 
+// при нажатии на кнопку read
+auto1kHzButton.addEventListener('click', function() {
+  log('auto 1kHz');
+  wake_build_packet(COMM_ADDR_CFG_CHANNEL, COMM_TYPE_KALIBR_MODE, new Uint16Array([KALIBR_MODE_1KHZ]), 2);
+  debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+});
+
 
 // при нажатии на кнопку START
 startButton.addEventListener('click', function() {
@@ -196,8 +204,7 @@ sendForm.addEventListener('submit', function(event) {
 // Кэш объекта выбранного устройства
 let deviceCache = null;
 
-let debugPipeInCharacteristic = null;
-let debugPipeOutCharacteristic = null;
+let debugPipeInOutCharacteristic = null;
 let coefficientValueCharacteristic = null;
 let fftCharacteristic = null;
 
@@ -296,20 +303,21 @@ function showValues(device) {
               var _dat;
               switch(uuid) {
                 default:
-                case 'f000c0e1-0451-4000-b000-000000000000':
-				  debugPipeInCharacteristic = characteristic;
-				  debugPipeInCharacteristic.addEventListener('characteristicvaluechanged', debugPipeInValueChanged);
-				  //debugPipeInCharacteristic.startNotifications(); // на андроиде не работает
-                  log('debugPipeIn OK');
-                  
-                  _val  = 0 ; // value.getInt16(0); ; // = 0 ; // = value.getInt16(0);
-                  _dat = 'int16';
-                break;
-                
                 case '0000aa81-0000-1000-8000-00805f9b34fb':
                   _val = 0 ; // value.getUint32(0);
                   _dat = 'uint32';
-                  break;
+                break;
+                  
+                case 'f000c0e1-0451-4000-b000-000000000000':
+				  debugPipeInOutCharacteristic = characteristic;
+				  debugPipeInOutCharacteristic.addEventListener('characteristicvaluechanged', debugPipeInValueChanged);
+				  //debugPipeInOutCharacteristic.startNotifications(); // на андроиде не работает
+                  log('debugPipeIn OK');
+                  
+                  _val  = 0 ;
+                  _dat = 'int16';
+                break;
+                
                 case '0000aa82-0000-1000-8000-00805f9b34fb':
                   _val = 0 ; // value.getUint8(0);
                   $('#startBtn')
@@ -319,7 +327,8 @@ function showValues(device) {
                     .attr('data-uuid', uuid)
                     .attr('data-value', 0);
                   _dat = 'uint16';
-                  break;
+                break;
+                
                 case '0000aa84-0000-1000-8000-00805f9b34fb':
 				  coefficientValueCharacteristic = characteristic;
 				  coefficientValueCharacteristic.addEventListener('characteristicvaluechanged', handleCoefficientValueChanged);
@@ -328,14 +337,15 @@ function showValues(device) {
                   _dat = 'int16';
                   $('#input').attr('data-uuid', uuid);
                   $('#input').val(_val);
-                  break;
+                break;
+                
                 case '0000aa85-0000-1000-8000-00805f9b34fb':
 				  fftCharacteristic = characteristic;
 				  fftCharacteristic.addEventListener('characteristicvaluechanged', handleFftChanged);
 				  //fftCharacteristic.startNotifications(); // на андроиде не работает
                   _val  = 0 ;
                   _dat = 'int16';
-                  break;
+                break;
               }
               charArray[uuid] = {
                 characteristic: characteristic,
@@ -539,13 +549,34 @@ function toHexString(byteArray) {
 // Получение debug data
 function debugPipeInValueChanged(event) {
   let bytes = new Uint8Array(event.target.value.buffer) ;
+  var parse_status ;
   
-  console.log("debug in [" + toHexString(bytes) + "]");
-  
+  //console.log("debug in [" + toHexString(bytes) + "]");
+/*  
   var s = "";
   //for(let i=0; i < bytes.length; i+=1) { s += String.fromCharCode(bytes[i]); }
   for(let i=0; i < bytes.length; i+=1) { s += bytes[i].toString(16); }
   log("debug in" + s);
+*/
+
+  for (var i=0; i<bytes.length; i++) {
+	 parse_status = parser_wake(bytes[i]);
+	 
+	 if (parse_status == RX_DONE) {
+	  console.log("[RX_DONE] ADDR=" + Rx_Add, " CMD=" + Rx_Cmd, " DATA:", Rx_Dat);
+      Rx_Sta = WAIT_FEND;
+/*	  
+	  if(Rx_Add == COMM_ADDR_MASTER) {
+		//beginlog("parse ");
+		
+		if(Rx_Cmd & CMD_REPLY_FLAG) {
+            beginlog('ACK ['+ (Rx_Cmd & 0x3F) + '] ' + Rx_Dat[0]);
+        } else {
+            if(Rx_Cmd == CMD_RAW_DATA) {
+*/
+     }                
+   }
+  
 }
 
 
@@ -555,7 +586,7 @@ function handleCoefficientValueChanged(event) {
   inputField.value = event.target.value.getInt16(0) ;
   coefficient_freq = event.target.value.getInt16(0) ;
   fftCharacteristic.startNotifications();
-  debugPipeInCharacteristic.startNotifications();
+  debugPipeInOutCharacteristic.startNotifications();
 }
 
 // Получение данных
@@ -674,3 +705,270 @@ fftSaveButton.addEventListener('click', function() {
   link.click();
 });
 
+
+
+//-----------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------
+//WAKE
+//-----------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------
+const COMM_ADDR_TPT_CHANNEL = 0x11 ; // ïðîçðà÷êà
+const COMM_ADDR_CFG_CHANNEL = 0x12 ; // cfg
+const COMM_ADDR_BIN_CHANNEL = 0x13 ; // data
+const COMM_ADDR_PRD_CHANNEL = 0x14 ; // ïåðèîä
+const COMM_ADDR_DBG_CHANNEL = 0x15 ; // îòëàäî÷íûé UART
+
+const COMM_TYPE_NOTHING = 4 ;
+const COMM_TYPE_DIN_DATA = 5 ;
+const COMM_TYPE_DEVICE_SELECT_TYPE = 6 ;
+const COMM_TYPE_VELOCITY_DATA = 7 ;
+const COMM_TYPE_TEMPERATURE_DATA = 8 ;
+const COMM_TYPE_RFID_DATA = 9 ;
+const COMM_TYPE_DISCRETE_DATA = 10 ;
+const COMM_TYPE_COMM_CONFIG = 11 ;
+const COMM_TYPE_COMM_STATUS_DATA = 12 ;
+const COMM_TYPE_BATTERY_DATA = 13 ;
+const COMM_TYPE_RESTART = 14 ;
+const COMM_TYPE_DBG_DATA = 15 ;
+const COMM_TYPE_RFID_EXTDATA = 16 ;
+const COMM_TYPE_VELOCITY_EXTDATA = 17 ;
+const COMM_TYPE_VELOCITY_FFTDATA = 18 ;
+const COMM_TYPE_KALIBR_MODE = 19 ;
+const COMM_TYPE_KALIBR_DATA = 20 ;
+
+const KALIBR_MODE_1KHZ = 0x0001 ;
+
+
+//стандартные
+const CMD_NOP         = 0x00 ; // Нет операции
+const CMD_ERR         = 0x01 ; // Передача кода ошибки
+const CMD_ECHO        = 0x02 ; // Запрос возврата переданного пакета
+const CMD_INFO        = 0x03 ; // Запрос информации об устройстве
+const CMD_SETADDR     = 0x04 ; // Установка адреса устройства
+const CMD_GETADDR     = 0x05 ; // Чтение адреса устройства
+//пользовательские     
+const CMD_SETMODE     = 0x06 ; // Установка режима работы
+const CMD_GETMODE     = 0x07 ; // Чтение режима работы
+const CMD_DATA        = 0x08 ; // Передача данных, виброскорость
+const CMD_RAW_DATA    = 0x09 ; // Передача сырых данных акселерометра
+const CMD_FFT_DATA    = 0x0A ; // Передача данных разложения в спектр 
+const CMD_SETCFG      = 0x0B ; // Установка коэфиициента
+const CMD_GETCFG      = 0x0C ; // Чтение коэфиициента
+const CMD_REPLY_FLAG  = 0x40 ; // ACK
+
+
+const VIBRO_CONFIG_BIT_START =   0x0001 // запустить измерение вибрации
+const VIBRO_CONFIG_BIT_ONCE  =   0x0002 // измерять и передавать постоянно, пока MODE_BYTE_RUN, или остановиться после одного прохода
+const VIBRO_CONFIG_BIT_FFT   =   0x0010 // передавать спектр FFT
+const VIBRO_CONFIG_BIT_RAW   =   0x0020 // передавать сырые данные с акселерометра
+
+
+
+
+
+const  FEND  = 0xC0 ;   //Frame END
+const  FESC  = 0xDB ;   //Frame ESCape
+const  TFEND = 0xDC ;   //Transposed Frame END
+const  TFESC = 0xDD ;   //Transposed Frame ESCape
+const  CRC_INIT = 0xDE ; //Innitial CRC value
+const  FRAME = 200 ;    //максимальная длина пакета
+var wake_out_buf = [] ; // new Uint8Array() ; // [] ;
+
+//--------------------- Вычисление контрольной суммы: ------------------------
+function Do_Crc8(b, crc)
+{
+  for(var i = 0; i < 8; b = b >> 1, i++)
+    if((b ^ crc) & 1) crc = ((crc ^ 0x18) >> 1) | 0x80;
+     else crc = (crc >> 1) & ~0x80;
+     
+  return crc ;
+}
+
+//добавление байта в поток WAKE, если совпадает со спецсимволом - заменяем на пару
+function make_wake_byte(_byte)
+{
+ var _result = 0 ;
+ if(_byte == FEND) {
+     // FESC TFEND
+     _result = (TFEND << 8) | FESC;
+ } else if(_byte == FESC) {
+     // FESC TFESC
+     _result = (TFESC << 8) | FESC;
+ } else {
+     // _byte
+     _result = _byte ;
+ }
+ return(_result);
+}
+
+
+// фомирование пакета для передачи
+// на выходе wake_out_buf
+// использование
+// wake_build_packet(0x15, 0x0F, new Uint8Array([0x53, 0x54, 0x41, 0x52, 0x54]), 0x05);
+// serialController.write_raw(new Uint8Array(wake_out_buf));
+function wake_build_packet(_addr, _cmd, _in_data, _n_bytes)
+{
+ var out_bytes = 0 ;
+ var wake_byte = 0 ;
+
+ console.log('SEND ['+ _addr.toString(16)+']('+_cmd.toString(16)+') '+_in_data.toString(16));
+ 
+ wake_out_buf = wake_out_buf.slice(0, 0) ;
+ 
+ var _crc = CRC_INIT ;
+ 
+ _crc = Do_Crc8(FEND, _crc);
+ _crc = Do_Crc8(_addr, _crc);
+ _crc = Do_Crc8(_cmd, _crc);
+ _crc = Do_Crc8(_n_bytes, _crc);
+ for(var _i=0; _i<_n_bytes; _i++) {
+      _crc = Do_Crc8(_in_data[_i], _crc);
+  }
+ 
+ wake_out_buf.push(FEND);
+ wake_out_buf.push(0x80|_addr);
+ wake_out_buf.push(_cmd & 0x7F);
+ 
+ wake_byte = make_wake_byte(_n_bytes) ;
+ wake_out_buf.push(wake_byte);
+ if(wake_byte & 0xFF00) wake_out_buf.push(wake_byte >> 8);
+ 
+ for(var _i=0; _i<_n_bytes; _i++) {
+	 wake_byte = make_wake_byte(_in_data[_i]);
+	 wake_out_buf.push(wake_byte);
+	 if(wake_byte & 0xFF00) wake_out_buf.push(wake_byte >> 8);
+ }
+ 
+ wake_byte = make_wake_byte(_crc) ;
+ wake_out_buf.push(wake_byte);
+ if(wake_byte & 0xFF00) wake_out_buf.push(wake_byte >> 8);
+ 
+ //console.log('WAKE outdata', wake_out_buf);
+}
+
+
+// переменые для приёма
+var  Rx_Sta,        //состояние процесса приема пакета
+     Rx_Pre,        //предыдущий принятый байт
+     Rx_Add,        //адрес, с которым сравнивается принятый
+     Rx_Cmd,        //принятая команда
+     Rx_Nbt,        //принятое количество байт в пакете
+     Rx_Dat = [],   //массив принятых данных
+     Rx_Crc,        //контрольная сумма принимаемого пакета
+     Rx_Ptr;        //указатель на массив принимаемых данных
+
+//RX process states:
+const  WAIT_FEND = 0 ; //ожидание приема FEND
+const  WAIT_ADDR = 1 ; //ожидание приема адреса
+const  WAIT_CMD  = 2 ; //ожидание приема команды
+const  WAIT_NBT  = 3 ; //ожидание приема количества байт в пакете
+const  WAIT_DATA = 4 ; //прием данных
+const  WAIT_CRC  = 5 ; //ожидание окончания приема CRC
+const  RX_DONE   = 6 ; //успешно принят новый пакет
+const  WAIT_CARR = 7 ; //ожидание несущей
+
+// WAKE приём, побайтово
+function parser_wake(data_byte)
+{
+//console.log(data_byte, Rx_Sta, Rx_Nbt, Rx_Ptr, Rx_Crc);
+  if(data_byte == FEND)               //если обнаружено начало фрейма,
+  {
+    Rx_Pre = data_byte;               //то сохранение пре-байта,
+    Rx_Crc = CRC_INIT;                //инициализация CRC,
+    Rx_Sta = WAIT_ADDR;               //сброс указателя данных,
+    Rx_Crc = Do_Crc8(data_byte, Rx_Crc);      //обновление CRC,
+    return(Rx_Sta);                           //выход
+  }
+
+  if(Rx_Sta == WAIT_FEND)             //-----> если ожидание FEND,
+      return(Rx_Sta);                           //то выход
+
+  var Pre = Rx_Pre;                  //сохранение старого пре-байта
+  Rx_Pre = data_byte;                 //обновление пре-байта
+  if(Pre == FESC)                     //если пре-байт равен FESC,
+  {
+    if(data_byte == TFESC)            //а байт данных равен TFESC,
+      data_byte = FESC;               //то заменить его на FESC
+    else if(data_byte == TFEND)       //если байт данных равен TFEND,
+           data_byte = FEND;          //то заменить его на FEND
+         else
+         {
+           Rx_Sta = WAIT_FEND;        //для всех других значений байта данных,
+           return(Rx_Sta);
+         }
+  }
+  else
+  {
+    if(data_byte == FESC)             //если байт данных равен FESC, он просто
+        return(Rx_Sta);                         //запоминается в пре-байте
+  }
+
+  switch(Rx_Sta)
+  {
+  case WAIT_ADDR:                     //-----> ожидание приема адреса
+    {
+      if(data_byte & 0x80)            //если бит 7 данных не равен нулю, то это адрес
+      {
+        data_byte = data_byte & 0x7F; //обнуляем бит 7, получаем истинный адрес
+//        if(data_byte == 0 || data_byte == Rx_Add) //если нулевой или верный адрес,
+Rx_Add = data_byte ;
+        if(1) // принимаем всё
+        {
+          Rx_Crc = Do_Crc8(data_byte, Rx_Crc); //то обновление CRC и
+          Rx_Sta = WAIT_CMD;          //переходим к приему команды
+          break;
+        }
+        Rx_Sta = WAIT_FEND;           //адрес не совпал, ожидание нового пакета
+        break;
+      }                               //если бит 7 данных равен нулю, то
+      Rx_Sta = WAIT_CMD;              //сразу переходим к приему команды
+    }
+  case WAIT_CMD:                      //-----> ожидание приема команды
+    {
+      if(data_byte & 0x80)            //проверка бита 7 данных
+      {
+        Rx_Sta = WAIT_FEND;           //если бит 7 не равен нулю,
+        break;
+      }
+      Rx_Cmd = data_byte;             //сохранение команды
+      Rx_Crc = Do_Crc8(data_byte, Rx_Crc);    //обновление CRC
+      Rx_Sta = WAIT_NBT;              //переходим к приему количества байт
+      break;
+    }
+  case WAIT_NBT:                      //-----> ожидание приема количества байт
+    {
+      if(data_byte > FRAME)           //если количество байт > FRAME,
+      {
+        Rx_Sta = WAIT_FEND;
+        break;
+      }
+      Rx_Nbt = data_byte;
+      Rx_Crc = Do_Crc8(data_byte, Rx_Crc);    //обновление CRC
+      Rx_Ptr = 0;                     //обнуляем указатель данных
+      Rx_Sta = WAIT_DATA;             //переходим к приему данных
+      break;
+    }
+  case WAIT_DATA:                     //-----> ожидание приема данных
+    {
+      if(Rx_Ptr < Rx_Nbt)             //если не все данные приняты,
+      {
+        Rx_Dat[Rx_Ptr++] = data_byte; //то сохранение байта данных,
+        Rx_Crc = Do_Crc8(data_byte, Rx_Crc);  //обновление CRC
+        break;
+      }
+      if(data_byte != Rx_Crc)         //если приняты все данные, то проверка CRC
+      {
+        Rx_Sta = WAIT_FEND;           //если CRC не совпадает,
+        break;
+      }
+      Rx_Sta = RX_DONE ;             //прием пакета завершен,
+      break;
+    }
+  }
+
+  return(Rx_Sta);
+}
