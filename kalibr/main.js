@@ -14,6 +14,12 @@ let clearButton = document.getElementById('clrBtn');
 //let hz1600Checkbox = document.getElementById('HZ1600');
 let readTuneCoeffButton = document.getElementById('KALIBR_READ');
 let auto1kHzButton = document.getElementById('AUTO_1KHZ');
+let auto10mmsButton = document.getElementById('AUTO_10MM_S');
+let auto5mmsButton = document.getElementById('AUTO_5MM_S');
+let tableReadButton = document.getElementById('tableRead');
+let tableWriteButton = document.getElementById('tableWrite');
+let tableArea = document.getElementById('tableCorrection');
+
 
 let vibrospeedLabel = document.getElementById('vibrospeed');
 let graphDiv = document.getElementById('div_v');
@@ -110,11 +116,72 @@ readTuneCoeffButton.addEventListener('click', function() {
   coefficientValueCharacteristic.readValue();
 });
 
-// при нажатии на кнопку read
+
+// при нажатии на кнопку auto 1 kHz
 auto1kHzButton.addEventListener('click', function() {
   log('auto 1kHz');
   wake_build_packet(COMM_ADDR_CFG_CHANNEL, COMM_TYPE_KALIBR_MODE, new Uint16Array([KALIBR_MODE_1KHZ]), 2);
   debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+});
+
+// при нажатии на кнопку auto 10 mm/s
+auto10mmsButton.addEventListener('click', function() {
+  log('auto 10 mm/s');
+  wake_build_packet(COMM_ADDR_CFG_CHANNEL, COMM_TYPE_KALIBR_MODE, new Uint16Array([KALIBR_MODE_10MMS]), 2);
+  debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+});
+
+// при нажатии на кнопку auto 10 mm/s
+auto5mmsButton.addEventListener('click', function() {
+  log('auto 5 mm/s');
+  wake_build_packet(COMM_ADDR_CFG_CHANNEL, COMM_TYPE_KALIBR_MODE, new Uint16Array([KALIBR_MODE_5MMS]), 2);
+  debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+});
+
+
+
+// при нажатии на кнопку tableRead
+tableReadButton.addEventListener('click', function() {
+  log('table read');
+  wake_build_packet(COMM_ADDR_CFG_CHANNEL, COMM_TYPE_KALIBR_DATA, new Uint16Array([0]), 2);
+  debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+});
+
+
+function sleep(milliseconds) {
+  const date = Date.now();
+  let currentDate = null;
+  do {
+    currentDate = Date.now();
+  } while (currentDate - date < milliseconds);
+}
+
+
+// при нажатии на кнопку tableWrite
+tableWriteButton.addEventListener('click', function() {
+  log('table write');
+  
+  var lines = tableArea.value.split('\n');
+  for(var i = 0;i < lines.length;i++){
+	if(lines[i].length > 1) {
+		console.log("send " + lines[i]) ;
+		var curr_line = lines[i].split(',');
+		console.log(curr_line) ;
+		if(curr_line.length == 1) { // количество
+		 var _count = parseInt(curr_line[0]);
+		 wake_build_packet(COMM_ADDR_BIN_CHANNEL, COMM_TYPE_KALIBR_DATA, new Uint8Array([0xFF, _count, (_count >> 8)]), 3);
+		 debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+		} else 
+		if(curr_line.length == 3) { // значения
+		 var _index = parseInt(curr_line[0]);
+		 var _freq = parseInt(curr_line[1]);
+		 var _att_value = parseInt(curr_line[2]);
+		 wake_build_packet(COMM_ADDR_BIN_CHANNEL, COMM_TYPE_KALIBR_DATA, new Uint8Array([_index, _freq, (_freq >> 8), _att_value, (_att_value >> 8)]), 5);
+		 debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+		}
+		sleep(50);
+	}
+  }
 });
 
 
@@ -171,6 +238,7 @@ clearButton.addEventListener('click', function() {
   for (let i=1;i<4096;i+=1) { fftByteArray[i] = 0 ; }
   for (let i=1;i<2*4096;i+=1) { rawDataByteArray[i] = 0 ; }
   datau = [] ;
+  tableArea.value = "";
   ShowGrf();
 });
 
@@ -565,16 +633,28 @@ function debugPipeInValueChanged(event) {
 	 if (parse_status == RX_DONE) {
 	  console.log("[RX_DONE] ADDR=" + Rx_Add, " CMD=" + Rx_Cmd, " DATA:", Rx_Dat);
       Rx_Sta = WAIT_FEND;
-/*	  
-	  if(Rx_Add == COMM_ADDR_MASTER) {
-		//beginlog("parse ");
-		
-		if(Rx_Cmd & CMD_REPLY_FLAG) {
-            beginlog('ACK ['+ (Rx_Cmd & 0x3F) + '] ' + Rx_Dat[0]);
-        } else {
-            if(Rx_Cmd == CMD_RAW_DATA) {
-*/
-     }                
+	  
+	  if(Rx_Add == COMM_ADDR_CFG_CHANNEL) {
+      } else 
+	  if(Rx_Add == COMM_ADDR_BIN_CHANNEL) {
+		if(Rx_Cmd == COMM_TYPE_KALIBR_DATA) {
+			//приём таблицы коэффициентов
+			if(Rx_Dat[0] == 0xFF) { //количество
+				var _count ;
+				_count = (Rx_Dat[2] << 8) + Rx_Dat[1] ;
+				tableArea.insertAdjacentHTML('beforeEnd', _count + '\r\n');
+			} else {
+				var _index, _freq, _att_value ;
+				
+				_index = Rx_Dat[0] ;
+				_freq = (Rx_Dat[2] << 8) + Rx_Dat[1] ;
+				_att_value = (Rx_Dat[4] << 8) + Rx_Dat[3] ;
+				tableArea.insertAdjacentHTML('beforeEnd', _index + ',\t' + _freq + ',\t' + _att_value + '\r\n');
+			}
+		}
+	  }
+	 }//parse_status == RX_DONE
+	 
    }
   
 }
@@ -739,7 +819,9 @@ const COMM_TYPE_VELOCITY_FFTDATA = 18 ;
 const COMM_TYPE_KALIBR_MODE = 19 ;
 const COMM_TYPE_KALIBR_DATA = 20 ;
 
-const KALIBR_MODE_1KHZ = 0x0001 ;
+const KALIBR_MODE_1KHZ  = 0x0001 ;
+const KALIBR_MODE_10MMS = 0x0002 ;
+const KALIBR_MODE_5MMS  = 0x0004 ;
 
 
 //стандартные
@@ -847,7 +929,7 @@ function wake_build_packet(_addr, _cmd, _in_data, _n_bytes)
  wake_out_buf.push(wake_byte);
  if(wake_byte & 0xFF00) wake_out_buf.push(wake_byte >> 8);
  
- //console.log('WAKE outdata', wake_out_buf);
+// console.log('WAKE outdata', wake_out_buf);
 }
 
 
