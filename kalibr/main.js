@@ -21,6 +21,7 @@ let tableWriteButton = document.getElementById('tableWrite');
 let tableArea = document.getElementById('tableCorrection');
 
 
+
 let vibrospeedLabel = document.getElementById('vibrospeed');
 let graphDiv = document.getElementById('div_v');
 let graphLab = document.getElementById('labdiv');
@@ -143,6 +144,7 @@ auto5mmsButton.addEventListener('click', function() {
 // при нажатии на кнопку tableRead
 tableReadButton.addEventListener('click', function() {
   log('table read');
+  tableArea.value = '' ;
   wake_build_packet(COMM_ADDR_CFG_CHANNEL, COMM_TYPE_KALIBR_DATA, new Uint16Array([0]), 2);
   debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
 });
@@ -163,11 +165,11 @@ tableWriteButton.addEventListener('click', function() {
   
   var lines = tableArea.value.split('\n');
   for(var i = 0;i < lines.length;i++){
-	if(lines[i].length > 1) {
+	if(lines[i].length > 0) {
 		console.log("send " + lines[i]) ;
 		var curr_line = lines[i].split(',');
 		console.log(curr_line) ;
-		if(curr_line.length == 1) { // количество
+		if(curr_line.length < 3) { // количество
 		 var _count = parseInt(curr_line[0]);
 		 wake_build_packet(COMM_ADDR_BIN_CHANNEL, COMM_TYPE_KALIBR_DATA, new Uint8Array([0xFF, _count, (_count >> 8)]), 3);
 		 debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
@@ -179,7 +181,7 @@ tableWriteButton.addEventListener('click', function() {
 		 wake_build_packet(COMM_ADDR_BIN_CHANNEL, COMM_TYPE_KALIBR_DATA, new Uint8Array([_index, _freq, (_freq >> 8), _att_value, (_att_value >> 8)]), 5);
 		 debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
 		}
-		sleep(50);
+		sleep(100);
 	}
   }
 });
@@ -642,14 +644,14 @@ function debugPipeInValueChanged(event) {
 			if(Rx_Dat[0] == 0xFF) { //количество
 				var _count ;
 				_count = (Rx_Dat[2] << 8) + Rx_Dat[1] ;
-				tableArea.insertAdjacentHTML('beforeEnd', _count + '\r\n');
+				tableArea.value +=  _count + '\r\n' ;
 			} else {
 				var _index, _freq, _att_value ;
 				
 				_index = Rx_Dat[0] ;
 				_freq = (Rx_Dat[2] << 8) + Rx_Dat[1] ;
 				_att_value = (Rx_Dat[4] << 8) + Rx_Dat[3] ;
-				tableArea.insertAdjacentHTML('beforeEnd', _index + ',\t' + _freq + ',\t' + _att_value + '\r\n');
+				tableArea.value += _index + ',\t' + _freq + ',\t' + _att_value + '\r\n' ;
 			}
 		}
 	  }
