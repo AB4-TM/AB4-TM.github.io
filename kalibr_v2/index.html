@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <link href="styles.css" rel="stylesheet">
+	<title>AB4-TM</title>
+	<script type="text/javascript" src="dygraph.min.js"></script>
+</head>
+<body>
+
+    <div id="header">
+          <button id="clrBtn" type="button">CLEAR</button>
+          <button id="connect" type="button">Connect</button>
+          <button id="disconnect" type="button">Disconnect</button>
+          <button id="startBtn" type="button">START</button>
+          <button id="fftStartBtn" type="button">FFTSTART</button>
+          <button id="rawDataStartBtn" type="button">RAWDATA_START</button>
+          <button id="stopBtn" type="button">STOP</button>
+          <button id="fftSaveBtn" type="button">SAVE TO CSV</button>
+
+          <br>
+          
+          <input type="checkbox" id="attenuator" name="attenuator"checked>
+          <label for="attenuator">ATT</label>
+
+          <input type="checkbox" id="once" name="once">
+          <label for="once">ONCE</label>
+
+          <input type="checkbox" id="axis_X" name="axis_X">
+          <label for="axis_X">X_axis</label>
+
+          <input type="checkbox" id="axis_Y" name="axis_Y">
+          <label for="axis_Y">Y_axis</label>
+
+          <input type="checkbox" id="p4096" name="p4096">
+          <label for="p4096">4096</label>
+
+          <input type="checkbox" id="p1024" name="p1024">
+          <label for="p1024">1024</label>
+
+          <input type="checkbox" id="f200" name="f200">
+          <label for="f200">f200</label>
+
+          <input type="checkbox" id="f400" name="f400">
+          <label for="f400">f400</label>
+
+          <input type="checkbox" id="f1000" name="f1000">
+          <label for="f1000">f1000</label>
+          
+          <input type="checkbox" id="x2dead" name="x2dead">
+          <label for="x2dead">x2DZ</label>
+          
+          <input type="checkbox" id="x3dead" name="x3dead">
+          <label for="x3dead">x3DZ</label>
+         
+          <input type="checkbox" id="adxl_1ms" name="adxl_1ms"checked>
+          <label for="adxl_1ms">adxl_1ms</label>
+         
+          <input type="checkbox" id="adxl_fifo" name="adxl_fifo">
+          <label for="adxl_fifo">adxl_fifo</label>
+         
+          <input type="checkbox" id="x1_fft" name="x1_fft">
+          <label for="x1_fft">x1_fft</label>
+          
+          <h1>
+          <input type="checkbox" id="fft_velocity" name="fft_velocity">
+          Виброскорость: <span id="vibrospeed">...</span>
+          </h1>
+    </div>
+    
+    <div id="kalibrTools">
+        <form id="send-form">
+            <input id="input" type="text">
+            <button type="submit">Send</button>
+            <button id="AUTO_1KHZ" type="button">AUTO 1kHz</button>
+            <button id="KALIBR_READ" type="button">READ</button>
+        </form>
+        
+        <form  id="table-form">
+          <p><b>Таблица корректировки</b></p>
+          <p><textarea id="tableCorrection" rows="20" cols="30" name="comment"></textarea></p>
+          <button id="tableRead" type="button">READ</button>
+          <button id="tableWrite" type="button">WRITE</button>
+          <button id="AUTO_10MM_S" type="button">AUTO(10)</button>
+          <button id="AUTO_5MM_S" type="button">AUTO(5)</button>
+         </form>
+    </div>
+
+    
+    <div id="div_v"></div>
+    <div id="labdiv"></div>
+    
+    <div id="terminal">Версия V0.0.10</div>
+    
+    <script src="main.js"></script>
+</body>
+</html>

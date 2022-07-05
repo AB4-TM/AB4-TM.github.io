@@ -2,8 +2,6 @@
 let connectButton = document.getElementById('connect');
 let disconnectButton = document.getElementById('disconnect');
 let terminalContainer = document.getElementById('terminal');
-let sendForm = document.getElementById('send-form');
-let inputField = document.getElementById('input');
 let startButton = document.getElementById('startBtn');
 let stopButton = document.getElementById('stopBtn');
 let clearButton = document.getElementById('clrBtn');
@@ -63,17 +61,6 @@ connectButton.addEventListener('click', function() {
 // Отключение от устройства при нажатии на кнопку Disconnect
 disconnectButton.addEventListener('click', function() {
   disconnect();
-});
-
-// Обработка события отправки формы
-sendForm.addEventListener('submit', function(event) {
-  event.preventDefault(); // Предотвратить отправку формы
-  send();
-  log("send " + inputField.value, 'out');
-  coefficient_freq = inputField.value ;
-  // send(inputField.value); // Отправить содержимое текстового поля
-//  inputField.value = '';  // Обнулить текстовое поле
-  inputField.focus();     // Вернуть фокус на текстовое поле
 });
 
 // Кэш объекта выбранного устройства
@@ -301,7 +288,6 @@ function disconnect() {
 // Получение коэффициента
 function handleCoefficientValueChanged(event) {
   log("coefficient " + event.target.value.getInt16(0), 'in'); // (0, littleEndian)
-  inputField.value = event.target.value.getInt16(0) ;
   coefficient_freq = event.target.value.getInt16(0) ;
 }
 

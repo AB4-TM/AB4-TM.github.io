@@ -21,6 +21,21 @@ div {
 }
 
 
+#kalibrTools{
+    float: left;
+}
+
+#terminal{
+    float: left;
+    height:400px;
+    width: 100%; 
+    text-align: left; 
+    overflow: auto; 
+}
+
+#div_v{
+    height:400px;
+}
 
 /**
  * Default styles for the dygraphs charting library.
