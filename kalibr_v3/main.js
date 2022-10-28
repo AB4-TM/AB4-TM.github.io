@@ -121,22 +121,19 @@ readTuneCoeffButton.addEventListener('click', function() {
 // при нажатии на кнопку auto 1 kHz
 auto1kHzButton.addEventListener('click', function() {
   log('auto 1kHz');
-  wake_build_packet(COMM_ADDR_CFG_CHANNEL, COMM_TYPE_KALIBR_MODE, new Uint16Array([KALIBR_MODE_1KHZ]), 2);
-  debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+  debugPipeInOutCharacteristic.writeValue(new Uint8Array([CMD_SET_KALIBR_MODE, KALIBR_MODE_1KHZ, KALIBR_MODE_1KHZ]));
 });
 
 // при нажатии на кнопку auto 10 mm/s
 auto10mmsButton.addEventListener('click', function() {
   log('auto 10 mm/s');
-  wake_build_packet(COMM_ADDR_CFG_CHANNEL, COMM_TYPE_KALIBR_MODE, new Uint16Array([KALIBR_MODE_10MMS]), 2);
-  debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+  debugPipeInOutCharacteristic.writeValue(new Uint8Array([CMD_SET_KALIBR_MODE, KALIBR_MODE_10MMS, KALIBR_MODE_10MMS>>8]));
 });
 
 // при нажатии на кнопку auto 10 mm/s
 auto5mmsButton.addEventListener('click', function() {
   log('auto 5 mm/s');
-  wake_build_packet(COMM_ADDR_CFG_CHANNEL, COMM_TYPE_KALIBR_MODE, new Uint16Array([KALIBR_MODE_5MMS]), 2);
-  debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+  debugPipeInOutCharacteristic.writeValue(new Uint8Array([CMD_SET_KALIBR_MODE, KALIBR_MODE_5MMS, KALIBR_MODE_5MMS>>8]));
 });
 
 
@@ -145,8 +142,7 @@ auto5mmsButton.addEventListener('click', function() {
 tableReadButton.addEventListener('click', function() {
   log('table read');
   tableArea.value = '' ;
-  wake_build_packet(COMM_ADDR_CFG_CHANNEL, COMM_TYPE_KALIBR_DATA, new Uint16Array([0]), 2);
-  debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+  debugPipeInOutCharacteristic.writeValue(new Uint8Array([CMD_GET_KALIBR_DATA, 0]));
 });
 
 
@@ -171,15 +167,13 @@ tableWriteButton.addEventListener('click', function() {
 		console.log(curr_line) ;
 		if(curr_line.length < 3) { // количество
 		 var _count = parseInt(curr_line[0]);
-		 wake_build_packet(COMM_ADDR_BIN_CHANNEL, COMM_TYPE_KALIBR_DATA, new Uint8Array([0xFF, _count, (_count >> 8)]), 3);
-		 debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+         debugPipeInOutCharacteristic.writeValue(new Uint8Array([CMD_SET_KALIBR_DATA, 0xFF, _count, (_count >> 8)]));
 		} else 
 		if(curr_line.length == 3) { // значения
 		 var _index = parseInt(curr_line[0]);
 		 var _freq = parseInt(curr_line[1]);
 		 var _att_value = parseInt(curr_line[2]);
-		 wake_build_packet(COMM_ADDR_BIN_CHANNEL, COMM_TYPE_KALIBR_DATA, new Uint8Array([_index, _freq, (_freq >> 8), _att_value, (_att_value >> 8)]), 5);
-		 debugPipeInOutCharacteristic.writeValue(new Uint8Array(wake_out_buf));
+         debugPipeInOutCharacteristic.writeValue(new Uint8Array([CMD_SET_KALIBR_DATA, _index, _freq, (_freq >> 8), _att_value, (_att_value >> 8)]));
 		}
 		sleep(100);
 	}
@@ -191,7 +185,7 @@ tableWriteButton.addEventListener('click', function() {
 startButton.addEventListener('click', function() {
   log('start');
   var uuid = $('#startBtn').attr('data-uuid');
-  var value = 0x01 ; // $('#startBtn').attr('data-value');
+  var value = VIBRO_CONFIG_BIT_START ; // $('#startBtn').attr('data-value');
   value = add_cfg_bits(value) ;
   var characteristic = charArray[uuid].characteristic;
   var converted = new Uint16Array([value]);
@@ -202,7 +196,7 @@ startButton.addEventListener('click', function() {
 fftStartButton.addEventListener('click', function() {
   log('fftstart');
   var uuid = $('#startBtn').attr('data-uuid');
-  var value = 0x11 ; // $('#startBtn').attr('data-value');
+  var value = VIBRO_CONFIG_BIT_START | VIBRO_CONFIG_BIT_FFT | VIBRO_CONFIG_BIT_SMALL_BUF ; // $('#startBtn').attr('data-value');
   value = add_cfg_bits(value) ;
   
   var characteristic = charArray[uuid].characteristic;
@@ -214,7 +208,7 @@ fftStartButton.addEventListener('click', function() {
 rawDataStartButton.addEventListener('click', function() {
   log('rawdata_start');
   var uuid = $('#startBtn').attr('data-uuid');
-  var value = 0x21 ; 
+  var value = VIBRO_CONFIG_BIT_START | VIBRO_CONFIG_BIT_RAW | VIBRO_CONFIG_BIT_SMALL_BUF ; // $('#startBtn').attr('data-value');
   value = add_cfg_bits(value) ;
   
   var characteristic = charArray[uuid].characteristic;
@@ -303,7 +297,7 @@ function requestBluetoothDevice() {
 	   // {services: [0xAA81]}
 	   {namePrefix: 'AB4'}
 	  ],
-	  optionalServices: [0xAA80, 0xAA64, 'f000c0e0-0451-4000-b000-000000000000']
+	  optionalServices: [0xAA80, 0xAA64, 'f000deb0-0451-4000-b000-000000000000']
   }).then(device => {
       log('"' + device.name + '" bluetooth device selected');
 	  devicename = device.name ;
@@ -343,7 +337,7 @@ function getPrimaryService(device, param) {
         if(param <= 0xAA85) {
             return server.getPrimaryService(0xAA80);
         } else {
-            return server.getPrimaryService('f000c0e0-0451-4000-b000-000000000000');
+            return server.getPrimaryService('f000deb0-0451-4000-b000-000000000000');
         }
       });
 }
@@ -357,7 +351,7 @@ function readCharacteristic(device, param) {
 }
 
 function showValues(device) {
-  var chars = ['f000c0e1-0451-4000-b000-000000000000', 0xAA81, 0xAA82, 0xAA84, 0xAA85 ];
+  var chars = ['f000deb1-0451-4000-b000-000000000000', 0xAA81, 0xAA82, 0xAA84, 0xAA85 ];
   if (!charArray) {
     for (var i in chars) {
       readCharacteristic(device, chars[i])
@@ -378,7 +372,7 @@ function showValues(device) {
                   _dat = 'uint32';
                 break;
                   
-                case 'f000c0e1-0451-4000-b000-000000000000':
+                case 'f000deb1-0451-4000-b000-000000000000':
 				  debugPipeInOutCharacteristic = characteristic;
 				  debugPipeInOutCharacteristic.addEventListener('characteristicvaluechanged', debugPipeInValueChanged);
 				  //debugPipeInOutCharacteristic.startNotifications(); // на андроиде не работает
@@ -485,9 +479,10 @@ function startNotifications(characteristic) {
 
 // Вывод в терминал
 function log(data, type = '') {
-  terminalContainer.insertAdjacentHTML('beforeEnd',
-      '<div' + (type ? ' class="' + type + '"' : '') + '>' + data + '</div>');
-  terminalContainer.scrollTop = terminalContainer.scrollHeight;
+  terminalContainer.insertAdjacentHTML('afterbegin', '<div' + (type ? ' class="' + type + '"' : '') + '>' + data + '</div>');
+  //terminalContainer.insertAdjacentHTML('beforeEnd', '<div' + (type ? ' class="' + type + '"' : '') + '>' + data + '</div>');
+  //terminalContainer.scrollTop = terminalContainer.scrollHeight;
+  
   //console.log(terminalContainer.scrollTop);
   //console.log(terminalContainer.scrollHeight);
 }
@@ -522,62 +517,41 @@ function disconnect() {
 
 // Получение fft data
 function handleFftChanged(event) {
-  var block = event.target.value.getUint8(0) ;
+  let bytes = new Uint8Array(event.target.value.buffer) ;
   
-  if(block == 0x7E) { //приём виброскоростиь по трём координатам
-    log(event.target.value.getInt32(1, true)/100 + '    [' + event.target.value.getInt16(5, true)/100 + ',   ' + event.target.value.getInt16(7, true)/100 + ',   ' + event.target.value.getInt16(9, true)/100 + ']    ' + event.target.value.getInt32(11, true) + '  lines ' + event.target.value.getInt16(15, true) , 'in'); 
-    vibrospeedLabel.innerHTML =  event.target.value.getInt32(1, true)/100 + '    [' + event.target.value.getInt16(5, true)/100 + ',   ' + event.target.value.getInt16(7, true)/100 + ',   ' + event.target.value.getInt16(9, true)/100 + ']    ' + event.target.value.getInt32(11, true) + '  lines ' + event.target.value.getInt16(15, true) ;
-  } else if(block < 0x80) { //приём 75 блоков FFT
-      if(block == 0x7F) {
-		n_points          = event.target.value.getUint16(1+0, true)*9 ;
-		pic32_fft_points  = event.target.value.getUint16(1+2, true) ;
-		pic32_fft_len     = event.target.value.getUint16(1+4, true) ;
-		pic32_sample_freq = event.target.value.getUint16(1+6, true) ;
-		coefficient_freq  = event.target.value.getUint16(1+8, true) ;
+  var start_index = event.target.value.getUint16(0, true) ;
+  
+  if(start_index < 0x8000) { //приём FFT
+      if(start_index == 0x7FFF) {
+		fft_points  = 4096/2 ;
+		sample_freq = (26667/12) ;
+        /*
+		coefficient_freq  = 10000 ;
 		inputField.value = coefficient_freq ;
+        */
 
-		if(pic32_fft_points > pic32_fft_len) {pic32_fft_points = pic32_fft_len ;}
-
-		console.log('fft data ' + n_points + ' ' + pic32_fft_points + ' ' + pic32_fft_len + ' ' + pic32_sample_freq + ' ' + coefficient_freq);
+		console.log('fft data ' + fft_points + ' ' + sample_freq + ' ' + coefficient_freq);
 
 		datau = [] ;
 		var freq ;
 		var deadzone ;
-		for (let i=1;i<n_points;i+=1) { 
-            freq = (i*(pic32_fft_points/n_points)*(pic32_sample_freq/pic32_fft_len)*(10000/coefficient_freq)) ; 
-            if ($('#fft_velocity').is(':checked')){
-                //velocity_fft[i] = Math.pow(velocity_fft[i]* pow( G_MM_S2 * MM_IN_METER, 2) / (4 * pow(pi, 2)), 0.5) / pow(2, 0.5)
-                //print(pow( pow( G_MM_S2 * MM_IN_METER, 2) / (4 * pow(pi, 2)), 0.5) / pow(2, 0.5))
-                
-                deadzone = 0.004 ;
-                if ($('#x2dead').is(':checked')) { deadzone *= 2 ; }
-                else if ($('#x3dead').is(':checked')) { deadzone *= 3 ; }
-                
-                if( (freq > 9.5) && ((fftByteArray[i]/4000) >= deadzone) )  {
-                    datau.push([freq, 1103.6358752302604* (fftByteArray[i]/4000) / freq]); 
-                } else {
-                    datau.push([freq, 0 ]); 
-                }
-            } else {
-                datau.push([freq, fftByteArray[i]/4000]); 
-            }
+		for (let i=1;i<fft_points;i+=1) { 
+            freq = i * (10000/coefficient_freq) * sample_freq/(fft_points*2) ;
+            datau.push([freq, fftByteArray[i]/4000]); 
         }
 		console.log(datau);
+        
 		ShowGrf();
 		freq = 0 ; datau.push([freq, fftByteArray[0]/4000]);
       } else {
-		fftByteArray[block*9+0] = event.target.value.getUint16(1+0, true) ;
-		fftByteArray[block*9+1] = event.target.value.getUint16(1+2, true) ;
-		fftByteArray[block*9+2] = event.target.value.getUint16(1+4, true) ;
-		fftByteArray[block*9+3] = event.target.value.getUint16(1+6, true) ;
-		fftByteArray[block*9+4] = event.target.value.getUint16(1+8, true) ;
-		fftByteArray[block*9+5] = event.target.value.getUint16(1+10, true) ;
-		fftByteArray[block*9+6] = event.target.value.getUint16(1+12, true) ;
-		fftByteArray[block*9+7] = event.target.value.getUint16(1+14, true) ;
-		fftByteArray[block*9+8] = event.target.value.getUint16(1+16, true) ;
-		console.log(block + ' ' + fftByteArray[block*9+0]);
+          for (let i=2;i<bytes.length;i+=2) {
+            fftByteArray[start_index] = event.target.value.getUint16(i, true) ;
+            console.log(start_index + ' ' + fftByteArray[start_index]);
+            start_index++;
+          }
 	  }
   } else { //приём 4096*2/9 блоков сырых данных
+      /*
       var block = event.target.value.getUint16(0, false) ;
       if(block ==  0xFFFF) { // 4096*2/9 
 		pic32_fft_points  = event.target.value.getUint16(2+0, false) ;
@@ -607,6 +581,7 @@ function handleFftChanged(event) {
 		rawDataByteArray[block*9+8] = event.target.value.getInt16(2+16, false) ;
 		console.log(block + ' ' + rawDataByteArray[block*9+0]);
 	  }
+      */
   }
 }
 
@@ -621,7 +596,7 @@ function debugPipeInValueChanged(event) {
   let bytes = new Uint8Array(event.target.value.buffer) ;
   var parse_status ;
   
-  //console.log("debug in [" + toHexString(bytes) + "]");
+  console.log("debug in [" + toHexString(bytes) + "]");
 /*  
   var s = "";
   //for(let i=0; i < bytes.length; i+=1) { s += String.fromCharCode(bytes[i]); }
@@ -629,35 +604,23 @@ function debugPipeInValueChanged(event) {
   log("debug in" + s);
 */
 
-  for (var i=0; i<bytes.length; i++) {
-	 parse_status = parser_wake(bytes[i]);
-	 
-	 if (parse_status == RX_DONE) {
-	  console.log("[RX_DONE] ADDR=" + Rx_Add, " CMD=" + Rx_Cmd, " DATA:", Rx_Dat);
-      Rx_Sta = WAIT_FEND;
-	  
-	  if(Rx_Add == COMM_ADDR_CFG_CHANNEL) {
-      } else 
-	  if(Rx_Add == COMM_ADDR_BIN_CHANNEL) {
-		if(Rx_Cmd == COMM_TYPE_KALIBR_DATA) {
-			//приём таблицы коэффициентов
-			if(Rx_Dat[0] == 0xFF) { //количество
-				var _count ;
-				_count = (Rx_Dat[2] << 8) + Rx_Dat[1] ;
-				tableArea.value +=  _count + '\r\n' ;
-			} else {
-				var _index, _freq, _att_value ;
-				
-				_index = Rx_Dat[0] ;
-				_freq = (Rx_Dat[2] << 8) + Rx_Dat[1] ;
-				_att_value = (Rx_Dat[4] << 8) + Rx_Dat[3] ;
-				tableArea.value += _index + ',\t' + _freq + ',\t' + _att_value + '\r\n' ;
-			}
-		}
-	  }
-	 }//parse_status == RX_DONE
-	 
-   }
+  if(bytes[0] == COMM_TYPE_KALIBR_DATA) {
+    if(bytes.length >= 4) {
+        //приём таблицы коэффициентов
+        if(bytes[1] == 0xFF) { //количество
+            var _count ;
+            _count = (bytes[3] << 8) + bytes[2] ;
+            tableArea.value +=  _count + '\r\n' ;
+        } else {
+            var _index, _freq, _att_value ;
+            
+            _index = bytes[1] ;
+            _freq = (bytes[3] << 8) + bytes[2] ;
+            _att_value = (bytes[5] << 8) + bytes[4] ;
+            tableArea.value += _index + ',\t' + _freq + ',\t' + _att_value + '\r\n' ;
+        }
+    }
+  }
   
 }
 
@@ -841,13 +804,20 @@ const CMD_RAW_DATA    = 0x09 ; // Передача сырых данных ак�
 const CMD_FFT_DATA    = 0x0A ; // Передача данных разложения в спектр 
 const CMD_SETCFG      = 0x0B ; // Установка коэфиициента
 const CMD_GETCFG      = 0x0C ; // Чтение коэфиициента
+const CMD_SET_KALIBR_MODE = 0x0D ; // установка флагов калибровки (KALIBR_MODE_1KHZ, KALIBR_MODE_5MMS, KALIBR_MODE_10MMS)
+const CMD_GET_KALIBR_MODE = 0x0E ; // чтение флагов калибровки
+const CMD_SET_KALIBR_DATA = 0x0F ; // запись калибровочной таблицы
+const CMD_GET_KALIBR_DATA = 0x10 ; // запрос калибровочной таблицы
 const CMD_REPLY_FLAG  = 0x40 ; // ACK
 
 
-const VIBRO_CONFIG_BIT_START =   0x0001 // запустить измерение вибрации
-const VIBRO_CONFIG_BIT_ONCE  =   0x0002 // измерять и передавать постоянно, пока MODE_BYTE_RUN, или остановиться после одного прохода
-const VIBRO_CONFIG_BIT_FFT   =   0x0010 // передавать спектр FFT
-const VIBRO_CONFIG_BIT_RAW   =   0x0020 // передавать сырые данные с акселерометра
+const VIBRO_CONFIG_BIT_START     = 0x0001 // запустить измерение вибрации
+const VIBRO_CONFIG_BIT_ONCE      = 0x0002 // измерять и передавать постоянно, пока MODE_BYTE_RUN, или остановиться после одного прохода
+const VIBRO_CONFIG_BIT_ATT       = 0x0004 // не использовать таблицу корректировки АЧХ (0 - по умолчанию - использовать таблицу,  1 - не испоользовать!!!! (для отладки))
+const VIBRO_CONFIG_BIT_SMALL_BUF = 0x0008 // для передачи спектра и сырых данных использовать упаковку по 20 байт и повышенный интервал времени между пакетами чтобы прокинуть в BLE
+const VIBRO_CONFIG_BIT_FFT       = 0x0010 // передавать спектр FFT
+const VIBRO_CONFIG_BIT_RAW       = 0x0020 // передавать сырые данные с акселерометра
+const VIBRO_CONFIG_BIT_FFT200    = 0x0040 // передавать спектр FFT в диапазоне 10..200 нормированный под OLED дисплей (1 байт на показание)
 
 
 

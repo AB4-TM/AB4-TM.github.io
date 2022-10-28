@@ -5,51 +5,61 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <link href="styles.css" rel="stylesheet">
-	<title>AB4-LT</title>
+	<title>AB4-TM</title>
 	<script type="text/javascript" src="dygraph.min.js"></script>
 </head>
 <body>
 
-<p>
-  <button id="clrBtn" type="button">CLEAR</button>
-  <button id="butOpen" type="button">Open</button>
-  <button id="infoBtn" type="button">GetInfo</button>
-  <button id="startBtn" type="button">START</button>
-  <button id="fftStartBtn" type="button">FFTSTART</button>
-  <button id="rawDataStartBtn" type="button">RAWDATA_START</button>
-  <button id="stopBtn" type="button">STOP</button>
-  <button id="fftSaveBtn" type="button">SAVE TO CSV</button>
-</p>
-<form id="send-form">
-    <input id="input" type="text">
-    <button type="submit">tune</button>
-</form>
-
-<form id="send-addr-form">
-    <input id="input-addr" type="text">
-    <button type="submit-addr">addr</button>
-</form>
-
-<p>
-  <input type="checkbox" id="once" name="once">
-  <label for="once">ONCE</label>
+<div id="header">
+    <button id="clrBtn" type="button">CLEAR</button>
+    <button id="butOpen" type="button">Open</button>
+    <button id="infoBtn" type="button">GetInfo</button>
+    <button id="startBtn" type="button">START</button>
+    <button id="fftStartBtn" type="button">FFTSTART</button>
+    <button id="fft200StartBtn" type="button">FFT200START</button>
+    <button id="rawDataStartBtn" type="button">RAWDATA_START</button>
+    <button id="stopBtn" type="button">STOP</button>
+    <button id="fftSaveBtn" type="button">SAVE TO CSV</button>
+    <br>
+    <input type="checkbox" id="once" name="once">
+    <label for="once">ONCE</label>
+    <input type="checkbox" id="smallbuf" name="smallbuf">
+    <label for="smallbuf">small_BUF</label>
+    <input type="checkbox" id="noATT" name="noATT">
+    <label for="noATT">no_ATT_correction</label>
  
-  <br>
-  <h1>
-  <input type="checkbox" id="fft_velocity" name="fft_velocity">
-  Виброскорость: <span id="vibrospeed">...</span>
-  </h1>
-</p>
-
-<div style="height: auto; width: auto; text-align: center;">
-<div id="div_v"	style="height:400px;"></div>
-<div id='labdiv' style=></div>
-
-<div style="height: auto; width: auto; text-align: left; overflow: auto;">
-<div id="terminal">
-	<div>Версия V0.0.3</div>
+    <h1>
+    Виброскорость: <span id="vibrospeed">...</span>
+    </h1>
 </div>
 
+<div id="kalibrTools">
+    <form id="send-form">
+        <input id="input" type="text">
+        <button type="submit">Send</button>
+        <button id="AUTO_1KHZ" type="button">AUTO 1kHz</button>
+    </form>
+    
+    <form id="send-addr-form">
+        <input id="input-addr" type="text">
+        <button type="submit-addr">addr</button>
+    </form>
+
+    
+    <form  id="table-form">
+      <p><b>Таблица корректировки</b></p>
+      <p><textarea id="tableCorrection" rows="20" cols="30" name="comment"></textarea></p>
+      <button id="tableRead" type="button">READ</button>
+      <button id="tableWrite" type="button">WRITE</button>
+      <button id="AUTO_10MM_S" type="button">AUTO(10)</button>
+      <button id="AUTO_5MM_S" type="button">AUTO(5)</button>
+     </form>
+</div>
+
+    <div id="div_v"></div>
+    <div id="labdiv"></div>
+    
+    <div id="terminal">Версия V0.0.10</div>
 </body>
 
 
@@ -174,7 +184,7 @@ function DeviceRead(data) {
 	 parse_status = parser_wake(data[i]);
 	 
 	 if (parse_status == RX_DONE) {
-	  //console.log("[RX_DONE] ADDR=" + Rx_Add, " CMD=" + Rx_Cmd, " DATA:", Rx_Dat);
+	  console.log("[RX_DONE] ADDR=" + Rx_Add, " CMD=" + Rx_Cmd, " DATA:", Rx_Dat);
       Rx_Sta = WAIT_FEND;
 	  
 	  if(Rx_Add == COMM_ADDR_MASTER) {
@@ -182,53 +192,89 @@ function DeviceRead(data) {
 		
 		if(Rx_Cmd & CMD_REPLY_FLAG) {
             beginlog('ACK ['+ (Rx_Cmd & 0x3F) + '] ' + Rx_Dat[0]);
+            if(saved_step != 0) { send_table(0); }
         } else {
             if(Rx_Cmd == CMD_RAW_DATA) {
                 rawdataIndex = (Rx_Dat[1] << 8) + Rx_Dat[0] ;
+                rawdataIndex &= 0x7FFF ;
                 
-                if(rawdataIndex == 0) {datau = [] ;} 
+                if(rawdataIndex < 0x7FFF) {
+                    if(rawdataIndex == 0) {datau = [] ;} 
                 
-                var _byte_index = 2 ;
-                while(_byte_index < Rx_Dat.length) {
-                 rawdataByteArray[rawdataIndex] = (Rx_Dat[_byte_index+1] << 8) + Rx_Dat[_byte_index] ;
-                 
-                 datau.push([rawdataIndex, rawdataByteArray[rawdataIndex]]); 
-    //			 console.log("datau.push" ,rawdataIndex, rawdataByteArray[rawdataIndex]);
-                
-                 _byte_index += 2 ;
-                 rawdataIndex++
+                    var _byte_index = 2 ;
+                    while(_byte_index < Rx_Dat.length) {
+                     rawdataByteArray[rawdataIndex] = (Rx_Dat[_byte_index+1] << 8) + Rx_Dat[_byte_index] ;
+                     
+                     datau.push([rawdataIndex, rawdataByteArray[rawdataIndex]]); 
+        //			 console.log("datau.push" ,rawdataIndex, rawdataByteArray[rawdataIndex]);
+                    
+                     _byte_index += 2 ;
+                     rawdataIndex++
+                    }
+                    
+                    if(rawdataIndex >= 4095) {ShowGrf();}
                 }
-                
-                if(rawdataIndex >= 4095) {ShowGrf();}
             }
             
             if(Rx_Cmd == CMD_FFT_DATA) {
                 fftIndex = (Rx_Dat[1] << 8) + Rx_Dat[0] ;
+                fftIndex &= 0x7FFF ;
                 
-                if(fftIndex == 0) {datau = [] ;} 
-                
-                var _byte_index = 2 ;
+                if(fftIndex < 0x7FFF) {
+                    if(fftIndex == 0) {datau = [] ;} 
+                    
+                    var _byte_index = 2 ;
+                    while(_byte_index < Rx_Dat.length) {
+                     fftByteArray[fftIndex] = (Rx_Dat[_byte_index+1] << 8) + Rx_Dat[_byte_index] ;
+                     
+                     freq = fftIndex * (10000/coefficient_freq) * (26667/12)/4096 ;
+                     if(freq != 0) {
+                        datau.push([freq, fftByteArray[fftIndex]/4000]); 
+                     }
+        //			 console.log("datau.push" ,fftIndex, freq, fftByteArray[fftIndex]/4000);
+                    
+                     _byte_index += 2 ;
+                     fftIndex++
+                    }
+                    
+                    if(fftIndex >= 2047) {ShowGrf();}
+                }
+            }
+            
+            if(Rx_Cmd == CMD_FFT200_DATA) {
+                datau = [] ;
+                fftIndex = 0 ;
+
+                var max_acc = ((Rx_Dat[1] << 8) + Rx_Dat[0]) / 100 ; 
+                var max_freq = ((Rx_Dat[3] << 8) + Rx_Dat[2]) / 10 ; 
+                var str ;
+                str = 'FFT200 (' + max_acc + ' m/s2, ' + max_freq + ' Hz )';
+                beginlog(str);
+
+                var _byte_index = 4 ;
+                var acc = 0 ;
                 while(_byte_index < Rx_Dat.length) {
-                 fftByteArray[fftIndex] = (Rx_Dat[_byte_index+1] << 8) + Rx_Dat[_byte_index] ;
-                 
-                 freq = fftIndex * (10000/coefficient_freq) * (26667/12)/4096 ;
-                 if(freq != 0) {
-                    datau.push([freq, fftByteArray[fftIndex]/4000]); 
-                 }
-    //			 console.log("datau.push" ,fftIndex, freq, fftByteArray[fftIndex]/4000);
-                
-                 _byte_index += 2 ;
-                 fftIndex++
+                    freq = 10 + fftIndex * 3 * (10000/coefficient_freq) * (26667/12)/4096 ;
+                    acc = Rx_Dat[_byte_index] ;
+                    datau.push([freq, acc]); 
+                    fftIndex++;
+                    _byte_index++;
                 }
                 
-                if(fftIndex >= 2047) {ShowGrf();}
+                ShowGrf();
             }
+            
             
             if(Rx_Cmd == CMD_DATA){
              if(Rx_Dat.length >= 2) {
                  var vspeed = ((Rx_Dat[1] << 8) + Rx_Dat[0]) / 100 ; 
-                 beginlog(vspeed);
-                 $('vibrospeed').innerHTML = vspeed ;
+                 var vdisplacement = ((Rx_Dat[3] << 8) + Rx_Dat[2]) / 1000 ; 
+                 var max_freq = ((Rx_Dat[5] << 8) + Rx_Dat[4]) / 10; 
+                 var max_acc = ((Rx_Dat[7] << 8) + Rx_Dat[6]) / 100 ; 
+                 var str ;
+                 str = vspeed + 'mm/s (' + vdisplacement + 'mm) max[' + max_freq + 'Hz, ' + max_acc + ' m/s2]';
+                 beginlog(str);
+                 $('vibrospeed').innerHTML = str ;
              }
             }
             
@@ -243,6 +289,24 @@ function DeviceRead(data) {
              //beginlog("coefficient_freq ="+ coefficient_freq);
              //beginlog("rs485_addr ="+ rs485_addr);
              //beginlog("devicename ="+ devicename);
+            }
+            
+            if(Rx_Cmd == CMD_GET_KALIBR_DATA){
+             if(Rx_Dat.length >= 2) {
+                //приём таблицы коэффициентов
+                if(Rx_Dat[0] == 0xFF) { //количество
+                    var _count ;
+                    _count = (Rx_Dat[2] << 8) + Rx_Dat[1] ;
+                    $('tableCorrection').value +=  _count + '\r\n' ;
+                } else {
+                    var _index, _freq, _att_value ;
+                    
+                    _index = Rx_Dat[0] ;
+                    _freq = (Rx_Dat[2] << 8) + Rx_Dat[1] ;
+                    _att_value = (Rx_Dat[4] << 8) + Rx_Dat[3] ;
+                    $('tableCorrection').value += _index + ',\t' + _freq + ',\t' + _att_value + '\r\n' ;
+                }
+             }
             }
         } // no ACK
         
@@ -291,6 +355,8 @@ $('infoBtn').addEventListener('click', function() {
 $('startBtn').addEventListener('click', function() {
 	var send_byte = VIBRO_CONFIG_BIT_START ;
 	if($('once').checked) { send_byte |= VIBRO_CONFIG_BIT_ONCE ; }
+	if($('smallbuf').checked) { send_byte |= VIBRO_CONFIG_BIT_SMALL_BUF ; }
+	if($('noATT').checked) { send_byte |= VIBRO_CONFIG_BIT_ATT ; }
 	
     wake_build_packet(COMM_ADDR_SLAVE, CMD_SETMODE, new Uint8Array([send_byte, send_byte >> 8]), 1);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
@@ -299,6 +365,18 @@ $('startBtn').addEventListener('click', function() {
 $('fftStartBtn').addEventListener('click', function() {
 	var send_byte = VIBRO_CONFIG_BIT_START | VIBRO_CONFIG_BIT_FFT ;
 	if($('once').checked) { send_byte |= VIBRO_CONFIG_BIT_ONCE ; }
+	if($('smallbuf').checked) { send_byte |= VIBRO_CONFIG_BIT_SMALL_BUF ; }
+	if($('noATT').checked) { send_byte |= VIBRO_CONFIG_BIT_ATT ; }
+	
+    wake_build_packet(COMM_ADDR_SLAVE, CMD_SETMODE, new Uint8Array([send_byte, send_byte >> 8]), 1);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
+$('fft200StartBtn').addEventListener('click', function() {
+	var send_byte = VIBRO_CONFIG_BIT_START | VIBRO_CONFIG_BIT_FFT200 ;
+	if($('once').checked) { send_byte |= VIBRO_CONFIG_BIT_ONCE ; }
+	if($('smallbuf').checked) { send_byte |= VIBRO_CONFIG_BIT_SMALL_BUF ; }
+	if($('noATT').checked) { send_byte |= VIBRO_CONFIG_BIT_ATT ; }
 	
     wake_build_packet(COMM_ADDR_SLAVE, CMD_SETMODE, new Uint8Array([send_byte, send_byte >> 8]), 1);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
@@ -307,6 +385,8 @@ $('fftStartBtn').addEventListener('click', function() {
 $('rawDataStartBtn').addEventListener('click', function() {
 	var send_byte = VIBRO_CONFIG_BIT_START | VIBRO_CONFIG_BIT_RAW ;
 	if($('once').checked) { send_byte |= VIBRO_CONFIG_BIT_ONCE ; }
+	if($('smallbuf').checked) { send_byte |= VIBRO_CONFIG_BIT_SMALL_BUF ; }
+	if($('noATT').checked) { send_byte |= VIBRO_CONFIG_BIT_ATT ; }
 	
     wake_build_packet(COMM_ADDR_SLAVE, CMD_SETMODE, new Uint8Array([send_byte, send_byte >> 8]), 1);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
@@ -317,6 +397,83 @@ $('stopBtn').addEventListener('click', function() {
     wake_build_packet(COMM_ADDR_SLAVE, CMD_SETMODE, new Uint8Array([send_byte, send_byte >> 8]), 1);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
 });
+
+$('tableRead').addEventListener('click', function() {
+    $('tableCorrection').value = "" ;
+    beginlog("tableRead", 'out');
+	var send_byte = 0    ;
+    wake_build_packet(COMM_ADDR_SLAVE, CMD_GET_KALIBR_DATA, new Uint8Array([send_byte, send_byte >> 8]), 1);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
+function sleep(milliseconds) {
+  const date = Date.now();
+  let currentDate = null;
+  do {
+    currentDate = Date.now();
+  } while (currentDate - date < milliseconds);
+}
+
+var saved_step = 0 ;
+function send_table(is_start) {
+  if(is_start) {saved_step = 0 ; }
+
+  var lines = $('tableCorrection').value.split('\n');
+  for(var i = 0;i < lines.length;i++){
+    if(saved_step == i) {
+        if(lines[i].length > 0) {
+            console.log("send " + lines[i]) ;
+            var curr_line = lines[i].split(',');
+            //console.log(curr_line) ;
+            if(curr_line.length < 3) { // количество
+             var _count = parseInt(curr_line[0]);
+             wake_build_packet(COMM_ADDR_SLAVE, CMD_SET_KALIBR_DATA, new Uint8Array([0xFF, _count, (_count >> 8)]), 3);
+             serialController.write_raw(new Uint8Array(wake_out_buf));
+            } else 
+            if(curr_line.length == 3) { // значения
+             var _index = parseInt(curr_line[0]);
+             var _freq = parseInt(curr_line[1]);
+             var _att_value = parseInt(curr_line[2]);
+             wake_build_packet(COMM_ADDR_SLAVE, CMD_SET_KALIBR_DATA, new Uint8Array([_index, _freq, (_freq >> 8), _att_value, (_att_value >> 8)]), 5);
+             serialController.write_raw(new Uint8Array(wake_out_buf));
+            }
+        }
+    }
+ }
+
+ 
+ 
+ saved_step = saved_step + 1 ;
+ if(saved_step >= lines.length) { saved_step = 0; beginlog("END tableWrite", 'out'); }
+}
+
+$('tableWrite').addEventListener('click', function() {
+  beginlog("START tableWrite", 'out');
+  
+  send_table(1) ;
+});
+
+$('AUTO_1KHZ').addEventListener('click', function() {
+    beginlog("AUTO_1KHZ", 'out');
+	var send_byte = KALIBR_MODE_1KHZ    ;
+    wake_build_packet(COMM_ADDR_SLAVE, CMD_SET_KALIBR_MODE, new Uint8Array([send_byte, send_byte >> 8]), 1);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
+$('AUTO_5MM_S').addEventListener('click', function() {
+    beginlog("AUTO_5MM_S", 'out');
+	var send_byte = KALIBR_MODE_5MMS    ;
+    wake_build_packet(COMM_ADDR_SLAVE, CMD_SET_KALIBR_MODE, new Uint8Array([send_byte, send_byte >> 8]), 1);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
+$('AUTO_10MM_S').addEventListener('click', function() {
+    beginlog("AUTO_10MM_S", 'out');
+	var send_byte = KALIBR_MODE_10MMS    ;
+    wake_build_packet(COMM_ADDR_SLAVE, CMD_SET_KALIBR_MODE, new Uint8Array([send_byte, send_byte >> 8]), 1);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
 
 $('fftSaveBtn').addEventListener('click', function() {
   log('fftsave to csv');
@@ -415,15 +572,27 @@ const CMD_RAW_DATA    = 0x09 ; // Передача сырых данных ак�
 const CMD_FFT_DATA    = 0x0A ; // Передача данных разложения в спектр 
 const CMD_SETCFG      = 0x0B ; // Установка коэфиициента
 const CMD_GETCFG      = 0x0C ; // Чтение коэфиициента
+const CMD_SET_KALIBR_MODE = 0x0D ; // установка флагов калибровки (KALIBR_MODE_1KHZ, KALIBR_MODE_5MMS, KALIBR_MODE_10MMS)
+const CMD_GET_KALIBR_MODE = 0x0E ; // чтение флагов калибровки
+const CMD_SET_KALIBR_DATA = 0x0F ; // запись калибровочной таблицы
+const CMD_GET_KALIBR_DATA = 0x10 ; // запрос калибровочной таблицы
+const CMD_FFT200_DATA     = 0x11 ;  // Передача данных разложения в спектр от 10 до 200 Гц для прямого отображения на экране
+
 const CMD_REPLY_FLAG  = 0x40 ; // ACK
 
 
-const VIBRO_CONFIG_BIT_START =   0x0001 // запустить измерение вибрации
-const VIBRO_CONFIG_BIT_ONCE  =   0x0002 // измерять и передавать постоянно, пока MODE_BYTE_RUN, или остановиться после одного прохода
-const VIBRO_CONFIG_BIT_FFT   =   0x0010 // передавать спектр FFT
-const VIBRO_CONFIG_BIT_RAW   =   0x0020 // передавать сырые данные с акселерометра
+const VIBRO_CONFIG_BIT_START     = 0x0001 // запустить измерение вибрации
+const VIBRO_CONFIG_BIT_ONCE      = 0x0002 // измерять и передавать постоянно, пока MODE_BYTE_RUN, или остановиться после одного прохода
+const VIBRO_CONFIG_BIT_ATT       = 0x0004 // не использовать таблицу корректировки АЧХ (0 - по умолчанию - использовать таблицу,  1 - не испоользовать!!!! (для отладки))
+const VIBRO_CONFIG_BIT_SMALL_BUF = 0x0008 // для передачи спектра и сырых данных использовать упаковку по 20 байт и повышенный интервал времени между пакетами чтобы прокинуть в BLE
+const VIBRO_CONFIG_BIT_FFT       = 0x0010 // передавать спектр FFT
+const VIBRO_CONFIG_BIT_RAW       = 0x0020 // передавать сырые данные с акселерометра
+const VIBRO_CONFIG_BIT_FFT200    = 0x0040 // передавать спектр FFT в диапазоне 10..200 нормированный под OLED дисплей (1 байт на показание)
 
 
+const KALIBR_MODE_1KHZ  = 0x0001 ;
+const KALIBR_MODE_10MMS = 0x0002 ;
+const KALIBR_MODE_5MMS  = 0x0004 ;
 
 
 
@@ -506,6 +675,8 @@ function wake_build_packet(_addr, _cmd, _in_data, _n_bytes)
  wake_out_buf.push(wake_byte);
  if(wake_byte & 0xFF00) wake_out_buf.push(wake_byte >> 8);
  
+ wake_out_buf.push(0x00); // RX/TX switch delay
+
  console.log('WAKE outdata', wake_out_buf);
 }
 
