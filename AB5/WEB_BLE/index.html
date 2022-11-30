@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <link href="styles.css" rel="stylesheet">
+	<title>AB5-TM</title>
+	<script type="text/javascript" src="dygraph.min.js"></script>
+</head>
+<body>
+
+    <div id="header">
+          <button id="clrBtn" type="button">CLEAR</button>
+          <button id="connect" type="button">Connect</button>
+          <button id="disconnect" type="button">Disconnect</button>
+          <button id="startBtn" type="button">START</button>
+          <button id="fftStartBtn" type="button">FFTSTART</button>
+          <button id="rawDataStartBtn" type="button">RAWDATA_START</button>
+          <button id="stopBtn" type="button">STOP</button>
+          <button id="fftSaveBtn" type="button">SAVE TO CSV</button>
+
+          <br>
+          
+          <input type="checkbox" id="once" name="once">
+          <label for="once">ONCE</label>
+          
+          <h1>
+          Виброскорость: <span id="vibrospeed">...</span> <span id="vibrodisplacement"></span>
+          </h1>
+    </div>
+    
+    <div id="kalibrTools">
+        <form id="send-form">
+            <input id="input" type="text">
+            <button type="submit">Send</button>
+            <button id="AUTO_1KHZ" type="button">AUTO 1kHz</button>
+            <button id="KALIBR_READ" type="button">READ</button>
+        </form>
+        
+        <form  id="table-form">
+          <p><b>Таблица корректировки  <span id="sensor_sernum"></span></b></p>
+          <p><textarea id="tableCorrection" rows="20" cols="30" name="comment"></textarea></p>
+          <button id="tableRead" type="button">READ</button>
+          <button id="tableWrite" type="button">WRITE</button>
+          <button id="AUTO_10MM_S" type="button">AUTO(10)</button>
+          <button id="AUTO_5MM_S" type="button">AUTO(5)</button>
+         </form>
+    </div>
+
+    
+    <div id="div_v"></div>
+    <div id="labdiv"></div>
+    
+    <div id="terminal">Версия V0.0.11</div>
+    
+    <script src="main.js"></script>
+</body>
+</html>
