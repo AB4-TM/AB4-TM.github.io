@@ -5,7 +5,7 @@ input {
   padding: .49rem 0;
 }
 #terminal div {
-    color: gray;
+    color: black;
 }
 
 #terminal div.out {
