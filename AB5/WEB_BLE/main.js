@@ -461,6 +461,8 @@ function disconnect() {
 function handleFftChanged(event) {
   let bytes = new Uint8Array(event.target.value.buffer) ;
   
+  console.log('BLE ' + bytes);
+  
   var start_index = event.target.value.getUint16(0, true) ;
   if(start_index == 0) { 
     for (let i=1;i<4096;i+=1) { 

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <link href="styles.css" rel="stylesheet">
+	<title>AB5-TM</title>
+	<script type="text/javascript" src="dygraph.min.js"></script>
+</head>
+<body>
+
+<div id="header">
+    <button id="connectBtn" type="button">Connect</button>
+    <button id="startBtn" type="button">START</button>
+    <button id="fftStartBtn" type="button">FFTSTART</button>
+    <button id="stopBtn" type="button">STOP</button>
+    <br>
+
+    <h1>
+    Виброскорость: <span id="vibrospeed">...</span> <span id="vibrodisplacement"></span>
+    </h1>
+</div>
+
+    <div id="div_v"></div>
+    <div id="labdiv"></div>
+    
+    <div id="terminal">Версия V0.0.1</div>
+</body>
+
+
+<script type="text/javascript">
+"use strict";
+
+var run_stop_uuid ;
+var fftByteArray = new Uint16Array(4096);
+var fft_points = 2048 ;
+var sample_freq = 2222 ;
+var coefficient_freq = 10000 ;
+
+
+var $ = function(id) {
+	return document.getElementById(id);
+}
+
+var devicename = "#0" ;
+
+function log(data, type = '') {
+  $('terminal').insertAdjacentHTML('beforeend',
+      '<div' + (type ? ' class="' + type + '"' : '') + '>' + data + '</div>');
+}
+
+function beginlog(data, type = '') {
+  $('terminal').insertAdjacentHTML('afterbegin',
+      '<div' + (type ? ' class="' + type + '"' : '') + '>' + data + '</div>');
+}
+function delay(ms) {
+  return new Promise((resolve, reject) => {
+	setTimeout(resolve, ms);
+  });
+}
+
+function sleep(milliseconds) {
+  const date = Date.now();
+  let currentDate = null;
+  do {
+    currentDate = Date.now();
+  } while (currentDate - date < milliseconds);
+}
+
+function hex(number, length) {
+	var str = (number.toString(16)).toUpperCase();
+	while (str.length < length) str = '0' + str;
+	return str;
+}
+
+
+$('connectBtn').addEventListener('click', function() {
+  connect();
+});
+
+$('startBtn').addEventListener('click', function() {
+  log('start');
+  var characteristic = charArray[run_stop_uuid].characteristic;
+  var converted = new Uint16Array([0x0001]);
+  characteristic.writeValue(converted);
+});
+
+$('fftStartBtn').addEventListener('click', function() {
+  log('fftstart');
+  var characteristic = charArray[run_stop_uuid].characteristic;
+  var converted = new Uint16Array([0x0019]);
+  characteristic.writeValue(converted);
+});
+
+$('stopBtn').addEventListener('click', function() {
+  log('stop');
+  
+  var characteristic = charArray[run_stop_uuid].characteristic;
+  var converted = new Uint16Array([0x0000]);
+  characteristic.writeValue(converted);
+});
+
+
+let deviceCache = null;
+
+let debugPipeInOutCharacteristic = null;
+let coefficientValueCharacteristic = null;
+let fftCharacteristic = null;
+
+
+function connect() {
+  var _dev = (deviceCache ? Promise.resolve(deviceCache) : requestBluetoothDevice());
+  _dev.then(device => showValues(device));
+  return _dev
+    .then(device => connectDeviceAndCacheCharacteristic(device))
+    .then(characteristic => startNotifications(characteristic))
+    .then(_ => {return fftCharacteristic.startNotifications()}) 
+    .catch(error => log(error));
+}
+
+function requestBluetoothDevice() {
+  log('Requesting bluetooth device...');
+
+  return navigator.bluetooth.requestDevice({
+    filters: [
+	   {namePrefix: 'AB5'}
+	  ],
+	  optionalServices: [0xAA80]
+  }).then(device => {
+      log('"' + device.name + '" bluetooth device selected');
+	  devicename = device.name ;
+      deviceCache = device;
+
+      deviceCache.addEventListener('gattserverdisconnected', handleDisconnection);
+
+      return deviceCache;
+    });
+}
+
+// Обработчик разъединения
+function handleDisconnection(event) {
+  let device = event.target;
+
+  log('"' + device.name + '" bluetooth device disconnected, trying to reconnect...');
+
+  connectDeviceAndCacheCharacteristic(device)
+    .then(characteristic => startNotifications(characteristic))
+    .catch(error => log(error));
+}
+
+let characteristicCache = null;
+let charArray = null;
+let serviceInstance = null;
+
+function getPrimaryService(device, param) {
+  return serviceInstance
+    ? Promise.resolve(serviceInstance)
+    : device.gatt.connect()
+      .then(server => {
+        log('GATT server connected, getting service...' + device + " " + param);
+        serviceInstance = server ;
+        return server.getPrimaryService(0xAA80);
+      });
+}
+
+function readCharacteristic(device, param) {
+//  log(device + ':: ' + param);
+  return getPrimaryService(device, param)
+    .then(service => {
+      return service.getCharacteristic(param);
+    });
+}
+
+function showValues(device) {
+  var chars = [0xAA81, 0xAA82, 0xAA85 ];
+  if (!charArray) {
+    for (var i in chars) {
+      readCharacteristic(device, chars[i])
+        .then(characteristic => {
+          if (!charArray) {
+            charArray = {};
+          }
+          var uuid = characteristic.uuid;
+			Promise.resolve(0)
+            .then(value => {
+              var _val;
+              var _dat;
+              switch(uuid) {
+                default:
+                case '0000aa81-0000-1000-8000-00805f9b34fb':
+                  _val = 0 ; // value.getUint32(0);
+                  _dat = 'uint32';
+                break;
+                  
+                case '0000aa82-0000-1000-8000-00805f9b34fb':
+                  _val = 0 ; // value.getUint8(0);
+                  run_stop_uuid = uuid ;
+                  _dat = 'uint16';
+                break;
+                
+                case '0000aa85-0000-1000-8000-00805f9b34fb':
+				  fftCharacteristic = characteristic;
+				  fftCharacteristic.addEventListener('characteristicvaluechanged', handleFftChanged);
+				  //fftCharacteristic.startNotifications(); // на андроиде не работает
+                  _val  = 0 ;
+                  _dat = 'int16';
+                break;
+              }
+              charArray[uuid] = {
+                characteristic: characteristic,
+                value: _val,
+                data: _dat
+              };
+			  log(uuid + ': ' + _val);
+            });
+        });
+    }
+  }
+}
+
+function connectDeviceAndCacheCharacteristic(device) {
+  if (device.gatt.connected && characteristicCache) {
+    return Promise.resolve(characteristicCache);
+  }
+
+  log('Connecting to GATT server...');
+  
+  return getPrimaryService(device, 0xAA81)
+    .then(service => {
+      log('Service found, getting characteristic...');
+
+      return service.getCharacteristic(0xAA81);
+    })
+    .then(characteristic => {
+      log('Characteristic found');
+      characteristicCache = characteristic;
+
+      return characteristicCache;
+    });
+}
+
+function startNotifications(characteristic) {
+  log('Starting notifications...');
+
+  return characteristic.startNotifications().
+      then(() => {
+        log('Notifications started');
+
+        characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);	
+      });
+}
+ 
+function handleCharacteristicValueChanged(event) {
+    let bytes = new Uint8Array(event.target.value.buffer) ;
+    console.log('BLE ' + bytes);
+    
+    $('vibrospeed').innerHTML =  event.target.value.getInt32(0)/100 ; // (0, littleEndian)
+    $('vibrodisplacement').innerHTML =  "мм/с (" + event.target.value.getInt16(5)/10 + 'мкм) max[' + event.target.value.getUint16(7)/10  + 'Гц, ' + event.target.value.getUint16(9)/100 + ' м/с2]'; 
+    log($('vibrospeed').innerHTML + $('vibrodisplacement').innerHTML, 'in');
+}
+ 
+function handleFftChanged(event) {
+  let bytes = new Uint8Array(event.target.value.buffer) ;
+  
+  console.log('BLE ' + bytes);
+  
+  var start_index = event.target.value.getUint16(0, true) ;
+  
+  if(start_index == 0) { for (let i=1;i<4096;i+=1) { fftByteArray[i] = 0 ; } }
+  
+  if(start_index < 0x8000) { //приём FFT
+      if(start_index == 0x7FFF) {
+        fft_points = event.target.value.getUint16(4, true) ;
+        sample_freq = event.target.value.getUint16(6, true) ;
+        coefficient_freq = event.target.value.getUint16(8, true) ;
+        
+
+		console.log('fft data ' + fft_points + ' ' + sample_freq + ' ' + coefficient_freq);
+
+		datau = [] ;
+		var freq ;
+		var deadzone ;
+		for (let i=1;i<fft_points;i+=1) { 
+            freq = i * (10000/coefficient_freq) * sample_freq/(fft_points*2) ;
+            datau.push([freq, fftByteArray[i]/4000]); 
+        }
+        
+		ShowGrf();
+		freq = 0 ; datau.push([freq, fftByteArray[0]/4000]);
+      } else {
+          for (let i=2;i<bytes.length;i+=2) {
+            fftByteArray[start_index] = event.target.value.getUint16(i, true) ;
+            console.log(start_index + ' ' + fftByteArray[start_index]);
+            start_index++;
+          }
+	  }
+  }
+}
+
+ 
+
+//-------------------------------------------------------------------
+// отображение графика
+var stg = 0;
+var datau = [];
+var graphDiv = $('div_v') ;
+var graphLab = $('labdiv');
+
+function ShowGrf() {
+	if(!stg) {
+		const gu = new Dygraph(
+			graphDiv,
+		    datau, 
+			{
+				title: 'спектр ускорений',
+				showRangeSelector: false, //true,
+				showRoller: false, //true,
+				xlabel: 'f(Hz)',
+				ylabel: 'амплитуда',
+				colors: ['green'],
+				axes: {
+					x: {valueFormatter: function(x){return this.getLabels()[0] + ': '+ x.toPrecision(5);}}},
+					labels: ['Hz', 'a'],
+					labelsDiv: graphLab,
+					legend: "follow", //'always',  // "follow"
+					digitsAfterDecimal: 3,
+			});
+//		setInterval(function(){renderChart()}, 50);
+		stg = 0;
+	} else {
+		gu.updateOptions({'file': datau});
+	}
+}
+
+
+</script>
+
+</html>
