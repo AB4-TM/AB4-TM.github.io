@@ -258,6 +258,7 @@ function handleCharacteristicValueChanged(event) {
     $('vibrospeed').innerHTML =  event.target.value.getInt32(0)/100 ; // (0, littleEndian)
     $('vibrodisplacement').innerHTML =  "мм/с (" + event.target.value.getInt16(5)/10 + 'мкм) max[' + event.target.value.getUint16(7)/10  + 'Гц, ' + event.target.value.getUint16(9)/100 + ' м/с2]'; 
     log($('vibrospeed').innerHTML + $('vibrodisplacement').innerHTML, 'in');
+    console.log($('vibrospeed').innerHTML + $('vibrodisplacement').innerHTML);
 }
  
 function handleFftChanged(event) {
