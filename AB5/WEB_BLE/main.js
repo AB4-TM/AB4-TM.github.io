@@ -591,7 +591,7 @@ function handleCoefficientValueChanged(event) {
 // Получение данных
 function handleCharacteristicValueChanged(event) {
     vibrospeedLabel.innerHTML =  event.target.value.getInt32(0)/100 ; // (0, littleEndian)
-    vibrodisplacementLabel.innerHTML =  "мм/с (" + event.target.value.getInt16(5)/10 + 'мкм) max[' + event.target.value.getUint16(7)/10  + 'Гц, ' + event.target.value.getUint16(9)/100 + ' м/с2]'; 
+    vibrodisplacementLabel.innerHTML =  "мм/с (" + event.target.value.getInt16(5)/10 + 'мкм) max[' + event.target.value.getUint16(7)/10  + 'Гц, ' + event.target.value.getUint16(9)/100 + ' м/с2], ' + event.target.value.getInt16(11)/10 + ' мкм (пик-пик) ' ; ; 
     log(vibrospeedLabel.innerHTML + vibrodisplacementLabel.innerHTML, 'in');
 }
 

@@ -15,17 +15,30 @@
     <button id="startBtn" type="button">START</button>
     <button id="fftStartBtn" type="button">FFTSTART</button>
     <button id="stopBtn" type="button">STOP</button>
+    <button id="clearBtn" type="button">Clear log</button>
+    <br>
+    <br>
+    <button id="modeVibrSpeedBtn" type="button">V1</button>
+    <button id="modeVibrMoveBtn" type="button">V2</button>
+    <button id="modeVibrMaxBtn" type="button">V2</button>
+    <button id="modeVibrFftBtn" type="button">V2</button>
+    <button id="modeRfidBtn" type="button">R</button>
+    <button id="modeIrBtn" type="button">T</button>
     <br>
 
-    <h1>
-    Виброскорость: <span id="vibrospeed">...</span> <span id="vibrodisplacement"></span>
-    </h1>
+    <h3>
+    Виброскорость:    <span id="vibrospeed">...</span>
+    <br>
+    Перемещение: <span id="vibrodisplacement">...</span>
+    <br>
+    Максимум:         <span id="vibromax">...</span>
+    </h3>
 </div>
 
     <div id="div_v"></div>
     <div id="labdiv"></div>
     
-    <div id="terminal">Версия V0.0.1</div>
+    <div id="terminal">Версия V0.0.2</div>
 </body>
 
 
@@ -82,7 +95,7 @@ $('connectBtn').addEventListener('click', function() {
 $('startBtn').addEventListener('click', function() {
   log('start');
   var characteristic = charArray[run_stop_uuid].characteristic;
-  var converted = new Uint16Array([0x0001]);
+  var converted = new Uint16Array([0x0041]);
   characteristic.writeValue(converted);
 });
 
@@ -101,12 +114,54 @@ $('stopBtn').addEventListener('click', function() {
   characteristic.writeValue(converted);
 });
 
+$('clearBtn').addEventListener('click', function() {
+  log('clear');
+  $('terminal').innerHTML = "";
+});
+
+$('modeIrBtn').addEventListener('click', function() {
+  log('IR');
+  var converted = new Uint8Array([0x02]);
+  modeSelectCharacteristic.writeValue(converted);
+});
+
+$('modeRfidBtn').addEventListener('click', function() {
+  log('RFID');
+  var converted = new Uint8Array([0x00]);
+  modeSelectCharacteristic.writeValue(converted);
+});
+
+$('modeVibrSpeedBtn').addEventListener('click', function() {
+  log('Vibro Speed');
+  var converted = new Uint8Array([0x03]);
+  modeSelectCharacteristic.writeValue(converted);
+});
+
+$('modeVibrMoveBtn').addEventListener('click', function() {
+  log('Vibro Displacement');
+  var converted = new Uint8Array([0x13]);
+  modeSelectCharacteristic.writeValue(converted);
+});
+
+$('modeVibrMaxBtn').addEventListener('click', function() {
+  log('Vibro Max');
+  var converted = new Uint8Array([0x23]);
+  modeSelectCharacteristic.writeValue(converted);
+});
+
+$('modeVibrFftBtn').addEventListener('click', function() {
+  log('Vibro FFT');
+  var converted = new Uint8Array([0x33]);
+  modeSelectCharacteristic.writeValue(converted);
+});
+
 
 let deviceCache = null;
 
 let debugPipeInOutCharacteristic = null;
 let coefficientValueCharacteristic = null;
 let fftCharacteristic = null;
+let modeSelectCharacteristic = null;
 
 
 function connect() {
@@ -126,7 +181,7 @@ function requestBluetoothDevice() {
     filters: [
 	   {namePrefix: 'AB5'}
 	  ],
-	  optionalServices: [0xAA80]
+	  optionalServices: [0xAA80, 0xAA64]
   }).then(device => {
       log('"' + device.name + '" bluetooth device selected');
 	  devicename = device.name ;
@@ -160,7 +215,11 @@ function getPrimaryService(device, param) {
       .then(server => {
         log('GATT server connected, getting service...' + device + " " + param);
         serviceInstance = server ;
-        return server.getPrimaryService(0xAA80);
+        if(param == 0xAA65) {
+            return server.getPrimaryService(0xAA64);
+        } else {
+            return server.getPrimaryService(0xAA80);
+        }
       });
 }
 
@@ -173,7 +232,7 @@ function readCharacteristic(device, param) {
 }
 
 function showValues(device) {
-  var chars = [0xAA81, 0xAA82, 0xAA85 ];
+  var chars = [0xAA81, 0xAA82, 0xAA85, 0xAA65 ];
   if (!charArray) {
     for (var i in chars) {
       readCharacteristic(device, chars[i])
@@ -202,7 +261,12 @@ function showValues(device) {
                 case '0000aa85-0000-1000-8000-00805f9b34fb':
 				  fftCharacteristic = characteristic;
 				  fftCharacteristic.addEventListener('characteristicvaluechanged', handleFftChanged);
-				  //fftCharacteristic.startNotifications(); // на андроиде не работает
+                  _val  = 0 ;
+                  _dat = 'int16';
+                break;
+                
+                case '0000aa65-0000-1000-8000-00805f9b34fb':
+				  modeSelectCharacteristic = characteristic;
                   _val  = 0 ;
                   _dat = 'int16';
                 break;
@@ -255,10 +319,12 @@ function handleCharacteristicValueChanged(event) {
     let bytes = new Uint8Array(event.target.value.buffer) ;
     console.log('BLE ' + bytes);
     
-    $('vibrospeed').innerHTML =  event.target.value.getInt32(0)/100 ; // (0, littleEndian)
-    $('vibrodisplacement').innerHTML =  "мм/с (" + event.target.value.getInt16(5)/10 + 'мкм) max[' + event.target.value.getUint16(7)/10  + 'Гц, ' + event.target.value.getUint16(9)/100 + ' м/с2]'; 
-    log($('vibrospeed').innerHTML + $('vibrodisplacement').innerHTML, 'in');
-    console.log($('vibrospeed').innerHTML + $('vibrodisplacement').innerHTML);
+    $('vibrospeed').innerHTML =  event.target.value.getInt32(0)/100 + ' мм/с (rms) ';
+    $('vibrodisplacement').innerHTML =  event.target.value.getInt16(5)/10 + 'мкм (rms), ' + event.target.value.getInt16(11)/10 + ' мкм (пик-пик) ' ; 
+    $('vibromax').innerHTML =  event.target.value.getUint16(7)/10  + ' Гц, ' + event.target.value.getUint16(9)/100 + ' м/с2' ; 
+    var log_str = $('vibrospeed').innerHTML + ', ' + $('vibrodisplacement').innerHTML + ', ' + $('vibromax').innerHTML
+    log(log_str, 'in');
+    console.log(log_str);
 }
  
 function handleFftChanged(event) {
