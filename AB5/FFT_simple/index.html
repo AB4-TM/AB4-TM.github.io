@@ -24,6 +24,9 @@
     <button id="modeVibrFftBtn" type="button">V4</button>
     <button id="modeRfidBtn" type="button">R</button>
     <button id="modeIrBtn" type="button">T</button>
+	фонарик 
+    <button id="lightOnBtn" type="button">ON</button>
+    <button id="lightOffBtn" type="button">OFF</button>
     <br>
 
     <h3>
@@ -152,6 +155,18 @@ $('modeVibrMaxBtn').addEventListener('click', function() {
 $('modeVibrFftBtn').addEventListener('click', function() {
   log('Vibro FFT');
   var converted = new Uint8Array([0x33]);
+  modeSelectCharacteristic.writeValue(converted);
+});
+
+$('lightOnBtn').addEventListener('click', function() {
+  log('light ON');
+  var converted = new Uint8Array([0x81]);
+  modeSelectCharacteristic.writeValue(converted);
+});
+
+$('lightOffBtn').addEventListener('click', function() {
+  log('light OFF');
+  var converted = new Uint8Array([0x80]);
   modeSelectCharacteristic.writeValue(converted);
 });
 
