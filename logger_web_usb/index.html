@@ -37,6 +37,7 @@
   <input type="checkbox" id="chmask0" name="chmask0" checked>
   <button id="setMaskBtn" type="button">set mask</button>
   <button id="setMask2048Btn" type="button">set mask 2048</button>
+  <button id="setMaskAndRegBtn" type="button">set mask+REG data</button>
   <br>
   <input type="checkbox" name="radio_set_7" id="checkbox7" onclick="SetСhSel(6)" >In</input>
   <input type="checkbox" name="radio_set_6" id="checkbox6" onclick="SetСhSel(5)" >Ic</input>
@@ -342,15 +343,49 @@ function DeviceRead(data) {
               collected_points = ((collected_data[2] << 8) + collected_data[1]) ;
               collected_data = collected_data.slice(3) ;
               
-              if(collected_mask & (1<<0)) { $('chmask0').checked = true ;} else { $('chmask0').checked = false ; }
-              if(collected_mask & (1<<1)) { $('chmask1').checked = true ;} else { $('chmask1').checked = false ; }
-              if(collected_mask & (1<<2)) { $('chmask2').checked = true ;} else { $('chmask2').checked = false ; }
-              if(collected_mask & (1<<3)) { $('chmask3').checked = true ;} else { $('chmask3').checked = false ; }
-              if(collected_mask & (1<<4)) { $('chmask4').checked = true ;} else { $('chmask4').checked = false ; }
-              if(collected_mask & (1<<5)) { $('chmask5').checked = true ;} else { $('chmask5').checked = false ; }
-              if(collected_mask & (1<<6)) { $('chmask6').checked = true ;} else { $('chmask6').checked = false ; }
+              var ch_in_use = 0 ;
+              if(collected_mask & (1<<0)) { $('chmask0').checked = true ; ch_in_use++; } else { $('chmask0').checked = false ; }
+              if(collected_mask & (1<<1)) { $('chmask1').checked = true ; ch_in_use++; } else { $('chmask1').checked = false ; }
+              if(collected_mask & (1<<2)) { $('chmask2').checked = true ; ch_in_use++; } else { $('chmask2').checked = false ; }
+              if(collected_mask & (1<<3)) { $('chmask3').checked = true ; ch_in_use++; } else { $('chmask3').checked = false ; }
+              if(collected_mask & (1<<4)) { $('chmask4').checked = true ; ch_in_use++; } else { $('chmask4').checked = false ; }
+              if(collected_mask & (1<<5)) { $('chmask5').checked = true ; ch_in_use++; } else { $('chmask5').checked = false ; }
+              if(collected_mask & (1<<6)) { $('chmask6').checked = true ; ch_in_use++; } else { $('chmask6').checked = false ; }
               
               var str = 'collected_data (0x' + collected_mask.toString(16) + ')   [' + collected_points + ']' ;
+              if(collected_data.length > collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA) {
+                var _index = collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA ;
+                var addr_additional_data = new Uint32Array(1) ;
+                var items_additional_data = new Uint32Array(1) ;
+                addr_additional_data[0] = ((collected_data[_index+3] << 24) + (collected_data[_index+2] << 16) + (collected_data[_index+1] << 8) + collected_data[_index+0]) ; 
+                items_additional_data[0] = ((collected_data[_index+5] << 8) + collected_data[_index+4]) ; 
+                //console.log('additional_data', ch_in_use, _index, addr_additional_data[0].toString(16), items_additional_data[0]);
+                
+                var addr_Ub_rms = 0x4001B050 ;
+                var _index_Ub = _index + 6 + (addr_Ub_rms - addr_additional_data[0])  ;
+                var Ub_value = new Uint32Array(1) ;
+                Ub_value[0] = ((collected_data[_index_Ub+3] << 24) + (collected_data[_index_Ub+2] << 16) + (collected_data[_index_Ub+1] << 8) + collected_data[_index_Ub+0]) ; 
+                //console.log('Ub_value', _index_Ub, Ub_value[0].toString(16), Ub_value[0]);
+                /*
+                var voltage_220 = Ub_value[0] * ( (1000/1) * 8 / 55 ) ;
+                voltage_220 = voltage_220 >> 16 ;
+                voltage_220++;
+                voltage_220 = voltage_220 >> 1 ;
+                */
+                var Vref = 1.2 ;
+                var ADC_raw_max = (1 << 23)  ;
+                var voltage_220 = Ub_value[0] * Vref / ADC_raw_max ;
+                voltage_220 = 220 * Math.sqrt(2) * voltage_220 ;
+                str += ' Ub=' + voltage_220.toFixed(2) ;
+/*
+                var addr_Ib_rms = 0x4001B05C ;
+                var _index_Ib = _index + 6 + (addr_Ib_rms - addr_additional_data[0])  ;
+                var Ib_value = new Uint32Array(1) ;
+                Ib_value[0] = ((collected_data[_index_Ib+3] << 24) + (collected_data[_index_Ib+2] << 16) + (collected_data[_index_Ib+1] << 8) + collected_data[_index_Ib+0]) ; 
+                console.log('Ib_value', _index_Ib, Ib_value[0].toString(16), Ib_value[0]);
+                str += ' Ib=' + Ib_value[0].toString(10) ;
+*/                
+              }
               beginlog(str);
               
               SetСhSel(0) ;
@@ -541,6 +576,24 @@ $('setMask2048Btn').addEventListener('click', function() {
     wake_build_packet( CMD_SETMASK, new Uint8Array([send_byte, need_points & 0xFF, (need_points >> 8) & 0xFF]), 3);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
 });
+
+
+$('setMaskAndRegBtn').addEventListener('click', function() {
+    var send_byte = 0x00 ;
+    if( $('chmask0').checked ) { send_byte |= 1<<0 ; }
+    if( $('chmask1').checked ) { send_byte |= 1<<1 ; }
+    if( $('chmask2').checked ) { send_byte |= 1<<2 ; }
+    if( $('chmask3').checked ) { send_byte |= 1<<3 ; }
+    if( $('chmask4').checked ) { send_byte |= 1<<4 ; }
+    if( $('chmask5').checked ) { send_byte |= 1<<5 ; }
+    if( $('chmask6').checked ) { send_byte |= 1<<6 ; }
+    var need_points = 2048 ; //0xFFFF ; //2048 ;
+    var reg_start_addr = 0x4001B01C ;
+    var reg_items = 0x4001B0B8 - 0x4001B01C ;
+    wake_build_packet( CMD_SETMASK, new Uint8Array([send_byte, need_points & 0xFF, (need_points >> 8) & 0xFF, reg_start_addr & 0xFF, (reg_start_addr >> 8) & 0xFF, (reg_start_addr >> 16) & 0xFF, (reg_start_addr >> 24) & 0xFF, reg_items & 0xFF, (reg_items >> 8) & 0xFF]), 9);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
 
 $('SaveBtn').addEventListener('click', function() {
   log('fftsave to csv');
