@@ -55,13 +55,16 @@
   <button id="write_u8_Btn" type="button">write u8</button>
   <button id="write_u32_Btn" type="button">write u32</button>
 </p>
-  <button id="read_data" type="button">read data</button>
-  <button id="read_angle" type="button">read angle</button>
+  <button id="read_data" type="button">EMU read data</button>
+  <button id="read_angle" type="button">EMU read angle</button>
+  <button id="read_gain" type="button">EMU read gain</button>
+  <button id="write_gain_0" type="button">EMU set gain 0</button>
+  <button id="write_gain_8" type="button">EMU set gain 8</button>
+  <button id="write_current_gain_8" type="button">EMU set current gain 8</button>
 </p>
-  <button id="read_gain" type="button">read gain</button>
-  <button id="write_gain_0" type="button">set gain 0</button>
-  <button id="write_gain_8" type="button">set gain 8</button>
-  <button id="write_current_gain_8" type="button">set current gain 8</button>
+  <button id="read_calibr" type="button">FLASH read calibr</button>
+  <button id="write_calibr" type="button">FLASH write calibr</button>
+  <button id="read_sn" type="button">INFO FLASH read SN</button>
   
 
 <div style="height: auto; width: auto; text-align: center;">
@@ -161,25 +164,54 @@ function SetСhSel(ch_sel) {
     }
     
     grapTitle = 'ADC data' ;
-    if(datau[0].length > 2) {
+    if(datau[0].length == 3) {
+        console.log('\r\n----compare signals-----');
         var fft_1_input_data = [] ;
         var fft_2_input_data = [] ;
         for (var i=0; i<collected_points; i++) { fft_1_input_data.push(datau[i][1]); fft_2_input_data.push(datau[i][2]); }
+
+        var average_value_1 = 0 ;
+        var average_value_2 = 0 ;
+        for (var i=0; i<collected_points; i++) { average_value_1 += fft_1_input_data[i]; average_value_2 += fft_2_input_data[i]; }
+        average_value_1 /= collected_points ;
+        average_value_2 /= collected_points ;
+        for (var i=0; i<collected_points; i++) { fft_1_input_data[i] -= average_value_1; fft_2_input_data[i] -= average_value_2; }
+        console.log('average_value', average_value_1.toFixed(0), average_value_2.toFixed(0));
+        
+        var rms_value_1 = 0 ;
+        var rms_value_2 = 0 ;
+        for (var i=0; i<collected_points; i++) { rms_value_1 += Math.pow(fft_1_input_data[i], 2) / collected_points; rms_value_2 += Math.pow(fft_2_input_data[i], 2) / collected_points; }
+        rms_value_1 = Math.pow(rms_value_1, 0.5); 
+        rms_value_2 = Math.pow(rms_value_2, 0.5); 
+        console.log('rms_value', rms_value_1.toFixed(0), rms_value_2.toFixed(0), 'rms1/rms2', (rms_value_1 / rms_value_2).toFixed(5) );
+        
         var fft_1_out = FFT(fft_1_input_data);
         var fft_2_out = FFT(fft_2_input_data);
+
+        var fft_1_max_fft_data_value = 0 ;
+        var fft_1_max_fft_data_index = 0 ;
+        var fft_2_max_fft_data_value = 0 ;
+        var fft_2_max_fft_data_index = 0 ;
+        for (var i = 0; i < fft_1_input_data.length / 2; i += 1) {
+          var X_abs_1 = Math.sqrt(fft_1_out[i].re * fft_1_out[i].re + fft_1_out[i].im * fft_1_out[i].im);
+          var X_abs_2 = Math.sqrt(fft_2_out[i].re * fft_2_out[i].re + fft_2_out[i].im * fft_2_out[i].im);
+		  if(fft_1_max_fft_data_value < X_abs_1) {fft_1_max_fft_data_value = X_abs_1; fft_1_max_fft_data_index = i;}
+		  if(fft_2_max_fft_data_value < X_abs_2) {fft_2_max_fft_data_value = X_abs_2; fft_2_max_fft_data_index = i;}
+		}
+        var phase_1 = Math.atan(fft_1_out[fft_1_max_fft_data_index].im / fft_1_out[fft_1_max_fft_data_index].re);
+        var phase_2 = Math.atan(fft_2_out[fft_1_max_fft_data_index].im / fft_2_out[fft_1_max_fft_data_index].re);
         
         var freq_step = 25600 / fft_1_input_data.length ;
-        var index_50Hz_point = 50 / freq_step ;
-        
-        var phase_50Hz_1 = Math.atan(fft_1_out[index_50Hz_point].im / fft_1_out[index_50Hz_point].re);
-        var phase_50Hz_2 = Math.atan(fft_2_out[index_50Hz_point].im / fft_2_out[index_50Hz_point].re);
-        
-        var angle = 180*(phase_50Hz_1-phase_50Hz_2)/3.1415296 ;
+		
+        var angle = 180*(phase_1-phase_2)/3.1415296 ;
         if(angle >  90) { angle = 180 - angle ; }
         if(angle < -90) { angle = 180 + angle ; }
         
-        grapTitle = 'angle ' + angle.toFixed(3) ; 
-        console.log('phases', phase_50Hz_1, phase_50Hz_2, angle.toFixed(3));
+        grapTitle = 'freq ' + (freq_step*fft_1_max_fft_data_index).toFixed(2) + '  angle ' + angle.toFixed(3) ; 
+        console.log('freq', (freq_step*fft_1_max_fft_data_index).toFixed(2), (freq_step*fft_2_max_fft_data_index).toFixed(2));
+        console.log('phases', phase_1.toFixed(3), phase_2.toFixed(3), 'angle', angle.toFixed(3));
+        console.log('fft',fft_1_max_fft_data_value.toFixed(2),fft_2_max_fft_data_value.toFixed(2), 'max1/max2', (fft_1_max_fft_data_value/fft_2_max_fft_data_value).toFixed(5));
+        console.log('------------------------\r\n');
     }
     
     if($('checkboxFft').checked) {
@@ -333,11 +365,29 @@ function DeviceRead(data) {
                         s += u32_val[0].toString(16).padStart(8, '0').toUpperCase() + ' ' ;}
                 }
                 $('input_data').value = s ;
-                beginlog("read_u8  [0x" + read_addr.toString(16) + '] (' + read_items + ') {' + s + '}', 'out');
+				
+				if(Rx_Cmd == CMD_READ_MEM_U8) {
+					beginlog("read_u8  [0x" + read_addr.toString(16) + '] (' + read_items + ') {' + s + '}');
+				} else {
+					beginlog("read_u32  [0x" + read_addr.toString(16) + '] (' + read_items + ') {' + s + '}');
+				}
+                
             } else 
             if(Rx_Cmd == CMD_COLLECTED_DATA){
-              collected_data = Rx_Dat ;
               bufRawData = Uint8Array.from(Rx_Dat);
+              
+              parse_collected_data(Rx_Dat);
+            }
+        } // no ACK
+	  }
+	  
+	  Rx_Dat = [] ;
+	 }
+	}
+}
+
+function parse_collected_data(input_data)  {
+              collected_data = input_data ;
               
               collected_mask = collected_data[0] ; 
               collected_points = ((collected_data[2] << 8) + collected_data[1]) ;
@@ -389,15 +439,7 @@ function DeviceRead(data) {
               beginlog(str);
               
               SetСhSel(0) ;
-            }
-        } // no ACK
-	  }
-	  
-	  Rx_Dat = [] ;
-	 }
-	}
 }
-
 
 var read_write_addr = 0 ;
 var read_write_n_items = 0 ;
@@ -427,14 +469,14 @@ function parse_input_fields(u8_u32_data_select) {
 
 $('read_u8_Btn').addEventListener('click', function() {
   parse_input_fields(0);
-  beginlog("read_u8  [0x" + read_write_addr.toString(16) + '] (' + read_write_n_items + ') {' + read_write_data + '}', 'out');
+  //beginlog("read_u8  [0x" + read_write_addr.toString(16) + '] (' + read_write_n_items + ')');
   wake_build_packet(CMD_READ_MEM_U8, new Uint8Array([read_write_addr, read_write_addr >> 8, read_write_addr >> 16, read_write_addr >> 24, read_write_n_items], ), 5);
   serialController.write_raw(new Uint8Array(wake_out_buf));
 });
 
 $('read_u32_Btn').addEventListener('click', function() {
   parse_input_fields(1);
-  beginlog("read_u32  [0x" + read_write_addr.toString(16) + '] (' + read_write_n_items + ') {' + read_write_data + '}', 'out');
+  //beginlog("read_u32  [0x" + read_write_addr.toString(16) + '] (' + read_write_n_items + ')');
   wake_build_packet(CMD_READ_MEM_U32, new Uint8Array([read_write_addr, read_write_addr >> 8, read_write_addr >> 16, read_write_addr >> 24, read_write_n_items], ), 5);
   serialController.write_raw(new Uint8Array(wake_out_buf));
 });
@@ -442,7 +484,7 @@ $('read_u32_Btn').addEventListener('click', function() {
 $('write_u8_Btn').addEventListener('click', function() {
   parse_input_fields(0);
   var new_data = Uint8Array.from(read_write_data);
-  beginlog("write_u8  [0x" + read_write_addr.toString(16) + '] (' + read_write_n_items + ') {' + new_data + '}', 'out');
+  //beginlog("write_u8  [0x" + read_write_addr.toString(16) + '] (' + read_write_n_items + ') {' + new_data + '}');
   wake_build_packet(CMD_WRITE_MEM_U8, new Uint8Array([read_write_addr, read_write_addr >> 8, read_write_addr >> 16, read_write_addr >> 24, read_write_n_items, ...new_data]), 5+new_data.length);
   serialController.write_raw(new Uint8Array(wake_out_buf));
 });
@@ -456,7 +498,7 @@ $('write_u32_Btn').addEventListener('click', function() {
     new_data[4*i+2] = read_write_data[i] >> 16 ;
     new_data[4*i+3] = read_write_data[i] >> 24 ;
   }
-  beginlog("write_u32  [0x" + read_write_addr.toString(16) + '] (' + read_write_n_items + ') {' + new_data + '}', 'out');
+  //beginlog("write_u32  [0x" + read_write_addr.toString(16) + '] (' + read_write_n_items + ') {' + new_data + '}');
   wake_build_packet(CMD_WRITE_MEM_U32, new Uint8Array([read_write_addr, read_write_addr >> 8, read_write_addr >> 16, read_write_addr >> 24, read_write_n_items, ...new_data] ), 5+new_data.length);
   serialController.write_raw(new Uint8Array(wake_out_buf));
 });
@@ -501,8 +543,25 @@ $('write_current_gain_8').addEventListener('click', function() {
     $('write_u32_Btn').click()
 });
 
+$('read_calibr').addEventListener('click', function() {
+    $('input_addr').value = "0x3FC00" ;
+    $('input_n').value = "8" ;
+    $('read_u8_Btn').click()
+});
+
+$('write_calibr').addEventListener('click', function() {
+    $('input_addr').value = "0x3FC01" ;
+    $('input_n').value = "3" ;
+    $('input_data').value = "AA BB CC" ;
+    $('write_u8_Btn').click()
+});
 
 
+$('read_sn').addEventListener('click', function() {
+    $('input_addr').value = "0x40000" ;
+    $('input_n').value = "4" ;
+    $('read_u8_Btn').click()
+});
 
 $('clrBtn').addEventListener('click', function() {
   $('terminal').innerHTML = "";
@@ -626,28 +685,7 @@ var openFile = function(event) {
 
   var reader = new FileReader();
   reader.onload = function() {
-              //collected_data = Uint8Array.from(reader.result);
-              collected_data = new Uint8Array(reader.result);
-              console.log(collected_data);
-              
-              bufRawData = Uint8Array.from(collected_data);
-              
-              collected_mask = collected_data[0] ; 
-              collected_points = ((collected_data[2] << 8) + collected_data[1]) ;
-              collected_data = collected_data.slice(3) ;
-              
-              if(collected_mask & (1<<0)) { $('chmask0').checked = true ;} else { $('chmask0').checked = false ; }
-              if(collected_mask & (1<<1)) { $('chmask1').checked = true ;} else { $('chmask1').checked = false ; }
-              if(collected_mask & (1<<2)) { $('chmask2').checked = true ;} else { $('chmask2').checked = false ; }
-              if(collected_mask & (1<<3)) { $('chmask3').checked = true ;} else { $('chmask3').checked = false ; }
-              if(collected_mask & (1<<4)) { $('chmask4').checked = true ;} else { $('chmask4').checked = false ; }
-              if(collected_mask & (1<<5)) { $('chmask5').checked = true ;} else { $('chmask5').checked = false ; }
-              if(collected_mask & (1<<6)) { $('chmask6').checked = true ;} else { $('chmask6').checked = false ; }
-              
-              var str = 'collected_data (0x' + collected_mask.toString(16) + ')   [' + collected_points + ']' ;
-              beginlog(str);
-              
-              SetСhSel(0) ;
+              parse_collected_data(new Uint8Array(reader.result)) ;
   };
   reader.readAsArrayBuffer(input.files[0]);
 };
@@ -742,11 +780,7 @@ const CMD_WRITE_MEM_U32 = 0x23 ; // Запись в память/регистр�
 const CMD_START_COLLECT    = 0xAA ; // Запуск измерения
 const CMD_COLLECTED_DATA   = 0xBB ; // Накопленные данные измерения
 
-const CMD_ANALOG_DATA = 0x08 ; // Передача данных
-const CMD_RAW_DATA    = 0x09 ; // Передача сырых данных
-const CMD_DIO_DATA    = 0x0A ; // состояние входов
-const CMD_FW_UPDATE   = 0x10 ; // обновление ПО по UART
-
+var all_wake_commands = [CMD_NOP, CMD_ERR, CMD_ECHO, CMD_INFO, CMD_SETADDR, CMD_GETADDR, CMD_GETVER, CMD_SETMODE, CMD_GETMODE, CMD_SETMASK, CMD_READ_MEM_U8, CMD_READ_MEM_U32, CMD_WRITE_MEM_U8, CMD_WRITE_MEM_U32, CMD_START_COLLECT, CMD_COLLECTED_DATA] ;
 
 
 
@@ -861,6 +895,11 @@ function parser_wake(data_byte)
   
   case WAIT_CMD:                      //-----> ожидание приема команды
     {
+	  if( !all_wake_commands.includes(data_byte) )
+	   {
+		Rx_Sta = WAIT_START_AA;
+		break ;
+	   }
       Rx_Cmd = data_byte;             //сохранение команды
       Rx_Crc = Do_Crc8(data_byte, Rx_Crc);    //обновление CRC
       Rx_Sta = WAIT_NBT_L;              //переходим к приему количества байт
