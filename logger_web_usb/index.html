@@ -26,7 +26,6 @@
   <button id="AaDataSelBtn" type="button">0xAA+SPI</button>
   <button id="startCollectionBtn" type="button">START COLLECTION</button>
   <button id="startCycleCollectionBtn" type="button">START CYCLE COLLECTION</button>
-  <input type="checkbox" name="radio_set" id="checkboxFft" " >FFT</input>  
 </p>
   <input type="checkbox" id="chmask6" name="chmask6" >
   <input type="checkbox" id="chmask5" name="chmask5" checked>
@@ -38,14 +37,19 @@
   <button id="setMaskBtn" type="button">set mask</button>
   <button id="setMask2048Btn" type="button">set mask 2048</button>
   <button id="setMaskAndRegBtn" type="button">set mask+REG data</button>
+  <input type="checkbox" name="radio_set" id="checkboxFft">FFT</input>  
   <br>
   <input type="checkbox" name="radio_set_7" id="checkbox7" onclick="SetСhSel(6)" >In</input>
   <input type="checkbox" name="radio_set_6" id="checkbox6" onclick="SetСhSel(5)" >Ic</input>
   <input type="checkbox" name="radio_set_5" id="checkbox5" onclick="SetСhSel(4)" >Ib</input>
   <input type="checkbox" name="radio_set_4" id="checkbox4" onclick="SetСhSel(3)" >Ia</input>
   <input type="checkbox" name="radio_set_3" id="checkbox3" onclick="SetСhSel(2)" >Uc</input>
-  <input type="checkbox" name="radio_set_2" id="checkbox2" onclick="SetСhSel(1)" checked>Ub</input>
-  <input type="checkbox" name="radio_set_1" id="checkbox1" onclick="SetСhSel(0)" >Ua</input>
+  <input type="checkbox" name="radio_set_2" id="checkbox2" onclick="SetСhSel(1)" >Ub</input>
+  <input type="checkbox" name="radio_set_1" id="checkbox1" onclick="SetСhSel(0)" checked>Ua</input>
+</p>
+  <input type="checkbox" id="scale_sel" name="scale_sel">SCALE</input>
+  <input type="checkbox" id="filter_sel" name="filter_sel">FILTER</input>
+  <button id="setFilterBtn" type="button">set filter</button>
 </p>
   <input id="input_addr" type="text" value="0x4001B000">
   <input id="input_n" type="text"  value="16">
@@ -120,7 +124,7 @@ var graph_labels = [] ;
 
 const BYTES_IN_ONE_CHANNEL_DATA = 3 ;
 function SetСhSel(ch_sel) {
-
+    if(ch_sel != -1) { stg = 0 ; }
     ch_in_use = 0 ;
     if( collected_mask & (1<<0) ) { ch_in_use++; }
     if( collected_mask & (1<<1) ) { ch_in_use++; }
@@ -234,7 +238,7 @@ function SetСhSel(ch_sel) {
           X_abs[i] = Math.sqrt(fft_out[i].re * fft_out[i].re + fft_out[i].im * fft_out[i].im);
           datau.push([i*freq_step, X_abs[i]]); 
         }    
-        console.log("X_abs", X_abs);
+        //console.log("X_abs", X_abs);
     }    
     
     ShowGrf();
@@ -402,31 +406,33 @@ function parse_collected_data(input_data)  {
               if(collected_mask & (1<<5)) { $('chmask5').checked = true ; ch_in_use++; } else { $('chmask5').checked = false ; }
               if(collected_mask & (1<<6)) { $('chmask6').checked = true ; ch_in_use++; } else { $('chmask6').checked = false ; }
               
-              var str = 'collected_data (0x' + collected_mask.toString(16) + ')   [' + collected_points + ']' ;
-              if(collected_data.length > collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA) {
-                var _index = collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA ;
+              var _config_data_index = collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA ;
+              var items_config_data = new Uint32Array(1) ;
+              items_config_data[0] = ((collected_data[_config_data_index+1] << 8) + collected_data[_config_data_index+0]) ; 
+              var digital_gain = ((collected_data[_config_data_index+3] << 8) + collected_data[_config_data_index+2]) ; 
+              var hw_cfg_byte = collected_data[_config_data_index+4];
+              //console.log('config_data, index(', _config_data_index, '), n_bytes[', items_config_data[0], ']', hw_cfg_byte.toString(16));
+              //if(hw_cfg_byte & (1<<0)) { $('filter_sel').checked = true ; } else { $('filter_sel').checked = false ; }
+              //if(hw_cfg_byte & (1<<1)) { $('scale_sel').checked = true ; } else { $('scale_sel').checked = false ; }
+                
+              var str = 'collected_data (0x' + collected_mask.toString(16) + ')   [' + collected_points + '], cfg_d_gain(' + digital_gain.toString(16) + '), cfg_byte[' + hw_cfg_byte.toString(16) + ']' ;
+              if(collected_data.length > (collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA+2+items_config_data[0])) {
+                var _index = collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA + 2 + items_config_data[0];
                 var addr_additional_data = new Uint32Array(1) ;
                 var items_additional_data = new Uint32Array(1) ;
                 addr_additional_data[0] = ((collected_data[_index+3] << 24) + (collected_data[_index+2] << 16) + (collected_data[_index+1] << 8) + collected_data[_index+0]) ; 
                 items_additional_data[0] = ((collected_data[_index+5] << 8) + collected_data[_index+4]) ; 
                 //console.log('additional_data', ch_in_use, _index, addr_additional_data[0].toString(16), items_additional_data[0]);
                 
-                var addr_Ub_rms = 0x4001B050 ;
-                var _index_Ub = _index + 6 + (addr_Ub_rms - addr_additional_data[0])  ;
-                var Ub_value = new Uint32Array(1) ;
-                Ub_value[0] = ((collected_data[_index_Ub+3] << 24) + (collected_data[_index_Ub+2] << 16) + (collected_data[_index_Ub+1] << 8) + collected_data[_index_Ub+0]) ; 
-                //console.log('Ub_value', _index_Ub, Ub_value[0].toString(16), Ub_value[0]);
-                /*
-                var voltage_220 = Ub_value[0] * ( (1000/1) * 8 / 55 ) ;
-                voltage_220 = voltage_220 >> 16 ;
-                voltage_220++;
-                voltage_220 = voltage_220 >> 1 ;
-                */
+                var addr_Ua_rms = 0x4001B04C ;
+                var _index_Ua = _index + 6 + (addr_Ua_rms - addr_additional_data[0])  ;
+                var Ua_value = new Uint32Array(1) ;
+                Ua_value[0] = ((collected_data[_index_Ua+3] << 24) + (collected_data[_index_Ua+2] << 16) + (collected_data[_index_Ua+1] << 8) + collected_data[_index_Ua+0]) ; 
                 var Vref = 1.2 ;
                 var ADC_raw_max = (1 << 23)  ;
-                var voltage_220 = Ub_value[0] * Vref / ADC_raw_max ;
+                var voltage_220 = Ua_value[0] * Vref / ADC_raw_max ;
                 voltage_220 = 220 * Math.sqrt(2) * voltage_220 ;
-                str += ' Ub=' + voltage_220.toFixed(2) ;
+                str += ', Ua=' + voltage_220.toFixed(2) ;
 /*
                 var addr_Ib_rms = 0x4001B05C ;
                 var _index_Ib = _index + 6 + (addr_Ib_rms - addr_additional_data[0])  ;
@@ -438,7 +444,7 @@ function parse_collected_data(input_data)  {
               }
               beginlog(str);
               
-              SetСhSel(0) ;
+              SetСhSel(-1) ;
 }
 
 var read_write_addr = 0 ;
@@ -567,6 +573,7 @@ $('clrBtn').addEventListener('click', function() {
   $('terminal').innerHTML = "";
   datau = [] ; showDataIndex = 0 ;
   ShowGrf();
+  stg = 0 ;
 });
 
 
@@ -653,6 +660,13 @@ $('setMaskAndRegBtn').addEventListener('click', function() {
 	serialController.write_raw(new Uint8Array(wake_out_buf));
 });
 
+$('setFilterBtn').addEventListener('click', function() {
+    var send_byte = 0x00 ;
+    if( $('filter_sel').checked ) { send_byte |= 1<<0 ; }
+    if( $('scale_sel').checked ) { send_byte |= 1<<1 ; }
+    wake_build_packet( CMD_SET_FILTER_CFG, new Uint8Array([send_byte]), 1);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
 
 $('SaveBtn').addEventListener('click', function() {
   log('fftsave to csv');
@@ -716,6 +730,7 @@ function convertArrayOfObjectsToCSV(value){
 
 //-------------------------------------------------------------------
 // отображение графика
+var gu;
 var stg = 0;
 var datau = [];
 var graphDiv = $('div_v') ;
@@ -724,7 +739,7 @@ var grapTitle = 'ADC data' ;
 
 function ShowGrf() {
 	if(!stg) {
-		const gu = new Dygraph(
+		gu = new Dygraph(
 			graphDiv,
 		    datau, 
               {
@@ -742,7 +757,7 @@ function ShowGrf() {
               }
             );
 //		setInterval(function(){renderChart()}, 50);
-		stg = 0;
+		stg = 1;
 	} else {
 		gu.updateOptions({'file': datau});
 	}
@@ -771,6 +786,7 @@ const CMD_GETVER      = 0x10 ; // Чтение адреса устройства
 const CMD_SETMODE     = 0x06 ; // Установка режима работы
 const CMD_GETMODE     = 0x07 ; // Чтение режима работы
 const CMD_SETMASK     = 0x08 ; // Установка маски
+const CMD_SET_FILTER_CFG   = 0x09 ; // Установка состояния аппаратного фильтра и скалера
 
 const CMD_READ_MEM_U8   = 0x20 ; // Чтение из памяти/регистров
 const CMD_READ_MEM_U32  = 0x21 ; // Чтение из памяти/регистров
@@ -780,7 +796,7 @@ const CMD_WRITE_MEM_U32 = 0x23 ; // Запись в память/регистр�
 const CMD_START_COLLECT    = 0xAA ; // Запуск измерения
 const CMD_COLLECTED_DATA   = 0xBB ; // Накопленные данные измерения
 
-var all_wake_commands = [CMD_NOP, CMD_ERR, CMD_ECHO, CMD_INFO, CMD_SETADDR, CMD_GETADDR, CMD_GETVER, CMD_SETMODE, CMD_GETMODE, CMD_SETMASK, CMD_READ_MEM_U8, CMD_READ_MEM_U32, CMD_WRITE_MEM_U8, CMD_WRITE_MEM_U32, CMD_START_COLLECT, CMD_COLLECTED_DATA] ;
+var all_wake_commands = [CMD_NOP, CMD_ERR, CMD_ECHO, CMD_INFO, CMD_SETADDR, CMD_GETADDR, CMD_GETVER, CMD_SETMODE, CMD_GETMODE, CMD_SETMASK, CMD_SET_FILTER_CFG, CMD_READ_MEM_U8, CMD_READ_MEM_U32, CMD_WRITE_MEM_U8, CMD_WRITE_MEM_U32, CMD_START_COLLECT, CMD_COLLECTED_DATA] ;
 
 
 
