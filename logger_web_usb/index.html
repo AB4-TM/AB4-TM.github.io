@@ -61,10 +61,14 @@
 </p>
   <button id="read_data" type="button">EMU read data</button>
   <button id="read_angle" type="button">EMU read angle</button>
-  <button id="read_gain" type="button">EMU read gain</button>
-  <button id="write_gain_0" type="button">EMU set gain 0</button>
-  <button id="write_gain_8" type="button">EMU set gain 8</button>
-  <button id="write_current_gain_8" type="button">EMU set current gain 8</button>
+<br>  
+  <button id="read_d_gain" type="button">EMU read d_gain</button>
+  <button id="write_d_gain_0" type="button">EMU set d_gain 0</button>
+  <button id="write_d_gain_8" type="button">EMU set d_gain 8</button>
+<br>  
+  <button id="read_a_gain" type="button">EMU read a_gain</button>
+  <button id="write_a_gain_0" type="button">EMU set a_gain 0</button>
+  <button id="write_a_gain_max" type="button">EMU set a_gain max</button>
 </p>
   <button id="read_calibr" type="button">FLASH read calibr</button>
   <button id="write_calibr" type="button">FLASH write calibr</button>
@@ -406,16 +410,19 @@ function parse_collected_data(input_data)  {
               if(collected_mask & (1<<5)) { $('chmask5').checked = true ; ch_in_use++; } else { $('chmask5').checked = false ; }
               if(collected_mask & (1<<6)) { $('chmask6').checked = true ; ch_in_use++; } else { $('chmask6').checked = false ; }
               
+              var str = 'collected_data (0x' + collected_mask.toString(16) + ')   [' + collected_points + ']' ;
+              var str1 = '' ;
+              
               var _config_data_index = collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA ;
               var items_config_data = new Uint32Array(1) ;
               items_config_data[0] = ((collected_data[_config_data_index+1] << 8) + collected_data[_config_data_index+0]) ; 
-              var digital_gain = ((collected_data[_config_data_index+3] << 8) + collected_data[_config_data_index+2]) ; 
-              var hw_cfg_byte = collected_data[_config_data_index+4];
+              var hw_cfg_byte = collected_data[_config_data_index+2];
+              var analog_gain = ((collected_data[_config_data_index+4] << 8) + collected_data[_config_data_index+3]) ; 
+              var digital_gain = ((collected_data[_config_data_index+6] << 8) + collected_data[_config_data_index+5]) ; 
               //console.log('config_data, index(', _config_data_index, '), n_bytes[', items_config_data[0], ']', hw_cfg_byte.toString(16));
-              //if(hw_cfg_byte & (1<<0)) { $('filter_sel').checked = true ; } else { $('filter_sel').checked = false ; }
-              //if(hw_cfg_byte & (1<<1)) { $('scale_sel').checked = true ; } else { $('scale_sel').checked = false ; }
                 
-              var str = 'collected_data (0x' + collected_mask.toString(16) + ')   [' + collected_points + '], cfg_d_gain(' + digital_gain.toString(16) + '), cfg_byte[' + hw_cfg_byte.toString(16) + ']' ;
+              str += ', cfg(' + hw_cfg_byte.toString(16) + ', ' + analog_gain.toString(16) + ', ' + digital_gain.toString(16) + ')' ;
+              
               if(collected_data.length > (collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA+2+items_config_data[0])) {
                 var _index = collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA + 2 + items_config_data[0];
                 var addr_additional_data = new Uint32Array(1) ;
@@ -424,6 +431,35 @@ function parse_collected_data(input_data)  {
                 items_additional_data[0] = ((collected_data[_index+5] << 8) + collected_data[_index+4]) ; 
                 //console.log('additional_data', ch_in_use, _index, addr_additional_data[0].toString(16), items_additional_data[0]);
                 
+                var rms_raw_values = new Uint32Array(7) ;
+                var addr_Ua_rms = 0x4001B04C ;
+                var _index_Ua = _index + 6 + (addr_Ua_rms - addr_additional_data[0])  ;
+                str += ', raw rms '
+                for (var ch = 0; ch < 7; ch++) {
+                    rms_raw_values[ch] = ((collected_data[4*ch+_index_Ua+3] << 24) + (collected_data[4*ch+_index_Ua+2] << 16) + (collected_data[4*ch+_index_Ua+1] << 8) + collected_data[4*ch+_index_Ua+0]) ; 
+                    //str += ((rms_raw_values[ch] >> 16) & 0xFFFF).toString(16).padStart(4, '0').toUpperCase() + ((rms_raw_values[ch] >> 0) & 0xFFFF).toString(16).padStart(4, '0').toUpperCase() + ', ' ;
+                    str += rms_raw_values[ch] + ', ';
+                }
+                
+                var Vref = 1.2 ;
+                var ADC_raw_max = (1 << 23)  ;
+                var voltage_devider =  4.7/(2310 + 4.7) ;
+                var current_devider =  2500/(240*26/(240+26)) ;
+                str1 += '  real rms '
+                for (var ch = 0; ch < 3; ch++) {
+                    var real_value = rms_raw_values[ch] ;
+                    real_value = real_value * Vref / ADC_raw_max ;
+                    //real_value = real_value / voltage_devider ; // * Math.sqrt(2);
+                    str1 += '______' + real_value.toFixed(2) ;
+                }
+                for (var ch = 3; ch < 7; ch++) {
+                    var real_value = rms_raw_values[ch] ;
+                    real_value = real_value * Vref / ADC_raw_max ;
+                    real_value = real_value / current_devider ; // * Math.sqrt(2);
+                    str1 += '______' + real_value.toFixed(4);
+                }
+                
+/*
                 var addr_Ua_rms = 0x4001B04C ;
                 var _index_Ua = _index + 6 + (addr_Ua_rms - addr_additional_data[0])  ;
                 var Ua_value = new Uint32Array(1) ;
@@ -433,7 +469,7 @@ function parse_collected_data(input_data)  {
                 var voltage_220 = Ua_value[0] * Vref / ADC_raw_max ;
                 voltage_220 = 220 * Math.sqrt(2) * voltage_220 ;
                 str += ', Ua=' + voltage_220.toFixed(2) ;
-/*
+
                 var addr_Ib_rms = 0x4001B05C ;
                 var _index_Ib = _index + 6 + (addr_Ib_rms - addr_additional_data[0])  ;
                 var Ib_value = new Uint32Array(1) ;
@@ -442,6 +478,7 @@ function parse_collected_data(input_data)  {
                 str += ' Ib=' + Ib_value[0].toString(10) ;
 */                
               }
+              beginlog(str1);
               beginlog(str);
               
               SetСhSel(-1) ;
@@ -467,7 +504,7 @@ function parse_input_fields(u8_u32_data_select) {
         if(u8_u32_data_select == 0) {
             s += (read_write_data[i] & 0xFF).toString(16).padStart(2, '0').toUpperCase() + ' ' ;
         } else {
-            s += (read_write_data[i] & 0xFFFFFFFF).toString(16).padStart(8, '0').toUpperCase() + ' ' ;
+            s += ((read_write_data[i] >> 16) & 0xFFFF).toString(16).padStart(4, '0').toUpperCase() + ((read_write_data[i] >> 0) & 0xFFFF).toString(16).padStart(4, '0').toUpperCase() + ' ' ;
         }
     }
     $('input_data').value = s ;
@@ -522,30 +559,43 @@ $('read_angle').addEventListener('click', function() {
 });
 
 
-$('read_gain').addEventListener('click', function() {
+$('read_d_gain').addEventListener('click', function() {
     $('input_addr').value = "0x4001C07C" ;
     $('input_n').value = "1" ;
     $('read_u32_Btn').click()
 });
 
-$('write_gain_0').addEventListener('click', function() {
+$('write_d_gain_0').addEventListener('click', function() {
     $('input_addr').value = "0x4001C07C" ;
     $('input_n').value = "1" ;
     $('input_data').value = "0" ;
     $('write_u32_Btn').click()
 });
 
-$('write_gain_8').addEventListener('click', function() {
+$('write_d_gain_8').addEventListener('click', function() {
     $('input_addr').value = "0x4001C07C" ;
     $('input_n').value = "1" ;
     $('input_data').value = "3FFF" ;
     $('write_u32_Btn').click()
 });
 
-$('write_current_gain_8').addEventListener('click', function() {
-    $('input_addr').value = "0x4001C07C" ;
+$('read_a_gain').addEventListener('click', function() {
+    $('input_addr').value = "0x4001C284" ;
     $('input_n').value = "1" ;
-    $('input_data').value = "FF" ;
+    $('read_u32_Btn').click()
+});
+
+$('write_a_gain_0').addEventListener('click', function() {
+    $('input_addr').value = "0x4001C284" ;
+    $('input_n').value = "1" ;
+    $('input_data').value = "0" ;
+    $('write_u32_Btn').click()
+});
+
+$('write_a_gain_max').addEventListener('click', function() {
+    $('input_addr').value = "0x4001C284" ;
+    $('input_n').value = "1" ;
+    $('input_data').value = "7FF" ;
     $('write_u32_Btn').click()
 });
 
