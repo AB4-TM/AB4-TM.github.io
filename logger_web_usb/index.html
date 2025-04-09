@@ -12,20 +12,16 @@
 <body>
 
 <p>
-  <input type='file' accept='.bin' onchange='openFile(event)'><br>
-</p>
   <button id="clrBtn" type="button">CLEAR</button>
   <button id="butOpen" type="button">Open</button>
-  <button id="getVerBtn" type="button">GET VER</button>
   <button id="SaveBtn" type="button">SAVE GRAPH TO CSV</button>
   <button id="butBufSave" type="button">Save buf.bin</button>
+  read from file <input type='file' accept='.bin' onchange='openFile(event)'><br>
 </p>
-  <button id="defaultAdcSelBtn" type="button">default ADC</button>
-  <button id="AdcDataSelBtn" type="button">ADC+SPI</button>
-  <button id="EmulDataSelBtn" type="button">EMUL+SPI</button>
-  <button id="AaDataSelBtn" type="button">0xAA+SPI</button>
+  <button id="getVerBtn" type="button">GET VER</button>
   <button id="startCollectionBtn" type="button">START COLLECTION</button>
   <button id="startCycleCollectionBtn" type="button">START CYCLE COLLECTION</button>
+  <button id="rebootCmdBtn" type="button">CMD reboot</button>
 </p>
   <input type="checkbox" id="chmask6" name="chmask6" >
   <input type="checkbox" id="chmask5" name="chmask5" checked>
@@ -47,33 +43,75 @@
   <input type="checkbox" name="radio_set_2" id="checkbox2" onclick="SetСhSel(1)" >Ub</input>
   <input type="checkbox" name="radio_set_1" id="checkbox1" onclick="SetСhSel(0)" checked>Ua</input>
 </p>
-  <input type="checkbox" id="scale_sel" name="scale_sel">SCALE</input>
-  <input type="checkbox" id="filter_sel" name="filter_sel">FILTER</input>
-  <button id="setFilterBtn" type="button">set filter</button>
+<details>
+    <summary>filter</summary>
+      <input type="checkbox" id="scale_sel" name="scale_sel">SCALE</input>
+      <input type="checkbox" id="filter_sel" name="filter_sel">FILTER</input>
+      <button id="setFilterBtn" type="button">set filter</button>
+</details>
+<details>
+    <summary>template</summary>
+      <button id="read_data" type="button">EMU read data</button>
+      <button id="read_angle" type="button">EMU read angle</button>
+      <button id="read_signal_status" type="button">EMU read signal status</button>
+    <br>  
+      <button id="read_d_gain" type="button">EMU read d_gain</button>
+      <button id="write_d_gain_0" type="button">EMU set d_gain 0</button>
+      <button id="write_d_gain_8" type="button">EMU set d_gain 8</button>
+    <br>  
+      <button id="read_a_gain" type="button">EMU read a_gain</button>
+      <button id="write_a_gain_0" type="button">EMU set a_gain 0</button>
+      <button id="write_a_gain_max" type="button">EMU set a_gain max</button>
+    <br>  
+      <button id="read_calibr" type="button">FLASH read calibr</button>
+      <button id="write_calibr" type="button">FLASH write calibr</button>
+      <button id="read_sn" type="button">INFO FLASH read SN</button>
+</details>
 </p>
-  <input id="input_addr" type="text" value="0x4001B000">
-  <input id="input_n" type="text"  value="16">
-  <input id="input_data" type="text"  value="CA FE">
-  <button id="read_u8_Btn" type="button">read u8</button>
+  <input id="input_addr" type="text" size="10" value="0x4001B000">
+  <input id="input_n" type="text" size="2" value="16">
+  <input id="input_data" type="text" size="35" value="CA FE">
   <button id="read_u32_Btn" type="button">read u32</button>
-  <button id="write_u8_Btn" type="button">write u8</button>
   <button id="write_u32_Btn" type="button">write u32</button>
+  <button id="read_u8_Btn" type="button">read u8</button>
+  <button id="write_u8_Btn" type="button">write u8</button>
 </p>
-  <button id="read_data" type="button">EMU read data</button>
-  <button id="read_angle" type="button">EMU read angle</button>
-<br>  
-  <button id="read_d_gain" type="button">EMU read d_gain</button>
-  <button id="write_d_gain_0" type="button">EMU set d_gain 0</button>
-  <button id="write_d_gain_8" type="button">EMU set d_gain 8</button>
-<br>  
-  <button id="read_a_gain" type="button">EMU read a_gain</button>
-  <button id="write_a_gain_0" type="button">EMU set a_gain 0</button>
-  <button id="write_a_gain_max" type="button">EMU set a_gain max</button>
+<details>
+  <summary>calibration</summary>
+      <b>correct gain, %</b>
+      <input id="input_err_percent" type="text"  size="5" value="0" style="text-align:right";>
+      <button id="gain_Ua_Btn" type="button" onclick="calibrGain(0)" > Ua</button>
+      <button id="gain_Ub_Btn" type="button" onclick="calibrGain(1)" > Ub</button>
+      <button id="gain_Uc_Btn" type="button" onclick="calibrGain(2)" > Uc</button>
+      <button id="gain_Ia_Btn" type="button" onclick="calibrGain(3)" > Ia</button>
+      <button id="gain_Ib_Btn" type="button" onclick="calibrGain(4)" > Ib</button>
+      <button id="gain_Ic_Btn" type="button" onclick="calibrGain(5)" > Ic</button>
+      ------------ 
+      <button id="read_calibration_Btn" type="button">read calibration</button>
+      <br>  
+      <input type="checkbox" name="use_hpf_check" id="use_hpf_check">HPF</input>
+      <button id="calibr_set_cfg" type="button">set cfg</button>
+      zero set
+      <button id="autozero_Ua_Btn" type="button" onclick="calibrZero(0)" > Ua</button>
+      <button id="autozero_Ub_Btn" type="button" onclick="calibrZero(1)" > Ub</button>
+      <button id="autozero_Uc_Btn" type="button" onclick="calibrZero(2)" > Uc</button>
+      <button id="autozero_Ia_Btn" type="button" onclick="calibrZero(3)" > Ia</button>
+      <button id="autozero_Ib_Btn" type="button" onclick="calibrZero(4)" > Ib</button>
+      <button id="autozero_Ic_Btn" type="button" onclick="calibrZero(5)" > Ic</button>
+      ------------
+      <button id="store_calibration_Btn" type="button">CMD store calibration</button>
+      <br>  
+      <b>correct phase, °</b>
+      <input id="input_phase_err_angke" type="text"  size="5" value="0" style="text-align:right";>
+      <button id="phase_Ua_Btn" type="button" onclick="calibrPhase(0)" > Ua</button>
+      <button id="phase_Ub_Btn" type="button" onclick="calibrPhase(1)" > Ub</button>
+      <button id="phase_Uc_Btn" type="button" onclick="calibrPhase(2)" > Uc</button>
+      <button id="phase_Ia_Btn" type="button" onclick="calibrPhase(3)" > Ia</button>
+      <button id="phase_Ib_Btn" type="button" onclick="calibrPhase(4)" > Ib</button>
+      <button id="phase_Ic_Btn" type="button" onclick="calibrPhase(5)" > Ic</button>
+      ------------
+</details>
 </p>
-  <button id="read_calibr" type="button">FLASH read calibr</button>
-  <button id="write_calibr" type="button">FLASH write calibr</button>
-  <button id="read_sn" type="button">INFO FLASH read SN</button>
-  
 
 <div style="height: auto; width: auto; text-align: center;">
 <div id="div_v"	style="height:400px;"></div>
@@ -120,6 +158,9 @@ function dec2bin(dec) {
   return (dec >>> 0).toString(2);
 }
 
+var summ_data = new Array(7) ;
+var middle_data = new Int32Array(7) ;
+
 var collected_data = [] ;
 var collected_mask ;
 var collected_points ;
@@ -138,6 +179,8 @@ function SetСhSel(ch_sel) {
     if( collected_mask & (1<<5) ) { ch_in_use++; }
     if( collected_mask & (1<<6) ) { ch_in_use++; }
     
+    for (var _ch=0; _ch<7; _ch++) { summ_data[_ch] = 0 ; }
+    
     datau = [] ; showDataIndex = 0 ;
     for (var i=0; i<collected_points; i++) {
       var push_data = [showDataIndex++, ] ;
@@ -148,6 +191,7 @@ function SetСhSel(ch_sel) {
               index_in_buf += BYTES_IN_ONE_CHANNEL_DATA ;
               raw_3byte_value = raw_3byte_value >> 2 ;
               if(raw_3byte_value & (0x1 << 21)) { raw_3byte_value = -((0x1 << 21) - (raw_3byte_value & ~(0x1 << 21))) ; }
+              summ_data[_ch] += raw_3byte_value ;
               
               if( (_ch == 0) && ($('checkbox1').checked) ) { push_data.push(raw_3byte_value);}
               if( (_ch == 1) && ($('checkbox2').checked) ) { push_data.push(raw_3byte_value);}
@@ -170,7 +214,10 @@ function SetСhSel(ch_sel) {
       //console.log("push_data", push_data);
       datau.push(push_data); 
     }
-    
+
+    for (var _ch=0; _ch<7; _ch++) { middle_data[_ch] = summ_data[_ch] / collected_points; }
+    //console.log('middle_data', middle_data);
+          
     grapTitle = 'ADC data' ;
     if(datau[0].length == 3) {
         console.log('\r\n----compare signals-----');
@@ -211,7 +258,7 @@ function SetСhSel(ch_sel) {
         
         var freq_step = 25600 / fft_1_input_data.length ;
 		
-        var angle = 180*(phase_1-phase_2)/3.1415296 ;
+        var angle = 180*(phase_2-phase_1)/3.1415296 ;
         if(angle >  90) { angle = 180 - angle ; }
         if(angle < -90) { angle = 180 + angle ; }
         
@@ -246,6 +293,59 @@ function SetСhSel(ch_sel) {
     }    
     
     ShowGrf();
+}
+
+function calibrGain(ch_sel) {
+    var err_percent_value = $('input_err_percent').value ;
+    err_percent_value = parseFloat(err_percent_value, 10) ;
+    
+    var send_value = new Int32Array(1);
+    send_value[0] = err_percent_value * 1000 ;
+    
+    err_percent_value = send_value[0] ;
+    err_percent_value /= 1000 ;
+    beginlog('calibrGain: ' + ch_sel + ' ' + err_percent_value);
+    
+    wake_build_packet( CMD_CALIBR_GAIN, new Uint8Array([ch_sel, send_value[0] & 0xFF, (send_value[0] >> 8) & 0xFF, (send_value[0] >> 16) & 0xFF, (send_value[0] >> 24) & 0xFF]), 5);
+    serialController.write_raw(new Uint8Array(wake_out_buf));
+    
+    var reg_addr = 0x4001C060 + 4*ch_sel ;
+    
+    $('input_addr').value = '0x' + reg_addr.toString(16).toUpperCase() ;
+    $('input_n').value = 1 ;
+}
+
+function calibrZero(ch_sel) {
+    var send_value = new Int32Array(1);
+    send_value[0] = middle_data[ch_sel] ;
+    wake_build_packet( CMD_CALIBR_SHIFT, new Uint8Array([ch_sel, send_value[0] & 0xFF, (send_value[0] >> 8) & 0xFF, (send_value[0] >> 16) & 0xFF, (send_value[0] >> 24) & 0xFF]), 5);
+    serialController.write_raw(new Uint8Array(wake_out_buf));
+    
+    var reg_addr = 0x4001C038 + 4*ch_sel ;
+    
+    $('input_addr').value = '0x' + reg_addr.toString(16).toUpperCase() ;
+    $('input_n').value = 1 ;
+}
+
+
+function calibrPhase(ch_sel) {
+    var err_angle_value = $('input_phase_err_angke').value ;
+    err_angle_value = parseFloat(err_angle_value, 10) ;
+    
+    var send_value = new Int32Array(1);
+    send_value[0] = err_angle_value * 1000 ;
+    
+    err_angle_value = send_value[0] ;
+    err_angle_value /= 1000 ;
+    beginlog('calibrPhase: ' + ch_sel + ' ' + err_angle_value);
+    
+    wake_build_packet( CMD_CALIBR_PHASE, new Uint8Array([ch_sel, send_value[0] & 0xFF, (send_value[0] >> 8) & 0xFF, (send_value[0] >> 16) & 0xFF, (send_value[0] >> 24) & 0xFF]), 5);
+    serialController.write_raw(new Uint8Array(wake_out_buf));
+    
+    var reg_addr = 0x4001C000 + 8*ch_sel ;
+    
+    $('input_addr').value = '0x' + reg_addr.toString(16).toUpperCase() ;
+    $('input_n').value = 2 ;
 }
 
 class SerialController {
@@ -348,7 +448,7 @@ function DeviceRead(data) {
       return ;
       } else 
 	 if (parse_status == RX_DONE) {
-	  //console.log("[RX_DONE] CMD=" + Rx_Cmd, " DATA:", Rx_Dat);
+	  //if(Rx_Cmd != CMD_COLLECTED_DATA) {console.log("[RX_DONE] CMD=" + Rx_Cmd, " DATA:", Rx_Dat);}
       Rx_Sta = WAIT_START_AA;
 	  
 	  if(1) {
@@ -359,12 +459,12 @@ function DeviceRead(data) {
                 for (var i = 0; i < Rx_Dat.length; i++) {s += String.fromCharCode(Rx_Dat[i]);}
                 beginlog(s);
             } else 
-            if( (Rx_Cmd == CMD_READ_MEM_U8) || (Rx_Cmd == CMD_READ_MEM_U32) ) {
+            if( (Rx_Cmd == CMD_READ_MEM_U8) || (Rx_Cmd == CMD_READ_MEM_U32) || (Rx_Cmd == CMD_READ_CALIBRATION)  ) {
                 var read_addr = ((Rx_Dat[3] << 24) + (Rx_Dat[2] << 16) + (Rx_Dat[1] << 8) + Rx_Dat[0]) ; ;
                 var read_items = Rx_Dat[4] ; ;
                 Rx_Dat = Rx_Dat.slice(5) ;
                 var s = "";
-                if(Rx_Cmd == CMD_READ_MEM_U8) { 
+                if((Rx_Cmd == CMD_READ_MEM_U8)  || (Rx_Cmd == CMD_READ_CALIBRATION)){ 
                     for (var i = 0; i < Rx_Dat.length; i++) {s += Rx_Dat[i].toString(16).padStart(2, '0').toUpperCase() + ' ' ;}
                 } else {
                     var u32_val = new Uint32Array(1) ;
@@ -374,12 +474,16 @@ function DeviceRead(data) {
                 }
                 $('input_data').value = s ;
 				
-				if(Rx_Cmd == CMD_READ_MEM_U8) {
+				if((Rx_Cmd == CMD_READ_MEM_U8)  || (Rx_Cmd == CMD_READ_CALIBRATION)){ 
 					beginlog("read_u8  [0x" + read_addr.toString(16) + '] (' + read_items + ') {' + s + '}');
 				} else {
 					beginlog("read_u32  [0x" + read_addr.toString(16) + '] (' + read_items + ') {' + s + '}');
 				}
                 
+                if(Rx_Cmd == CMD_READ_CALIBRATION) {
+                    $('input_addr').value = '0x' + read_addr.toString(16).toUpperCase() ; 
+                    $('input_n').value = read_items.toString(10) ;
+                }
             } else 
             if(Rx_Cmd == CMD_COLLECTED_DATA){
               bufRawData = Uint8Array.from(Rx_Dat);
@@ -412,6 +516,7 @@ function parse_collected_data(input_data)  {
               
               var str = 'collected_data (0x' + collected_mask.toString(16) + ')   [' + collected_points + ']' ;
               var str1 = '' ;
+              var str2 = '' ;
               
               var _config_data_index = collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA ;
               var items_config_data = new Uint32Array(1) ;
@@ -419,9 +524,10 @@ function parse_collected_data(input_data)  {
               var hw_cfg_byte = collected_data[_config_data_index+2];
               var analog_gain = ((collected_data[_config_data_index+4] << 8) + collected_data[_config_data_index+3]) ; 
               var digital_gain = ((collected_data[_config_data_index+6] << 8) + collected_data[_config_data_index+5]) ; 
+              var signal_status = ((collected_data[_config_data_index+10] << 24) + (collected_data[_config_data_index+9] << 16) + (collected_data[_config_data_index+8] << 8) + collected_data[_config_data_index+7]) ; 
               //console.log('config_data, index(', _config_data_index, '), n_bytes[', items_config_data[0], ']', hw_cfg_byte.toString(16));
                 
-              str += ', cfg(' + hw_cfg_byte.toString(16) + ', ' + analog_gain.toString(16) + ', ' + digital_gain.toString(16) + ')' ;
+              str += ', cfg(' + hw_cfg_byte.toString(16) + ', ' + analog_gain.toString(16) + ', ' + digital_gain.toString(16) + ', ' + signal_status.toString(16) + ')' ;
               
               if(collected_data.length > (collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA+2+items_config_data[0])) {
                 var _index = collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA + 2 + items_config_data[0];
@@ -434,52 +540,50 @@ function parse_collected_data(input_data)  {
                 var rms_raw_values = new Uint32Array(7) ;
                 var addr_Ua_rms = 0x4001B04C ;
                 var _index_Ua = _index + 6 + (addr_Ua_rms - addr_additional_data[0])  ;
-                str += ', raw rms '
-                for (var ch = 0; ch < 7; ch++) {
+                //str += ', raw rms '
+                for (var ch = 0; ch < 6; ch++) {
                     rms_raw_values[ch] = ((collected_data[4*ch+_index_Ua+3] << 24) + (collected_data[4*ch+_index_Ua+2] << 16) + (collected_data[4*ch+_index_Ua+1] << 8) + collected_data[4*ch+_index_Ua+0]) ; 
-                    //str += ((rms_raw_values[ch] >> 16) & 0xFFFF).toString(16).padStart(4, '0').toUpperCase() + ((rms_raw_values[ch] >> 0) & 0xFFFF).toString(16).padStart(4, '0').toUpperCase() + ', ' ;
-                    str += rms_raw_values[ch] + ', ';
+                    rms_raw_values[ch] = rms_raw_values[ch] >> 2 ;
+                    //str += rms_raw_values[ch] + ', ';
                 }
                 
-                var Vref = 1.2 ;
-                var ADC_raw_max = (1 << 23)  ;
-                var voltage_devider =  4.7/(2310 + 4.7) ;
-                var current_devider =  2500/(240*26/(240+26)) ;
-                str1 += '  real rms '
+                var ADC_full_scale_V = 0.93 ;
+                var ADC_raw_max = (1 << 21)  ;
+                //var voltage_devider =  4.7/(2310 + 4.7) ;
+                var voltage_devider =  1.4/(2310 + 1.4) ;
+                var current_devider =  1/(2500/(240*26/(240+26))) ;
+                str1 += 'rms  :'
                 for (var ch = 0; ch < 3; ch++) {
                     var real_value = rms_raw_values[ch] ;
-                    real_value = real_value * Vref / ADC_raw_max ;
-                    //real_value = real_value / voltage_devider ; // * Math.sqrt(2);
-                    str1 += '______' + real_value.toFixed(2) ;
+                    real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
+                    real_value = real_value / voltage_devider ; // * Math.sqrt(2);
+                    str1 += '__' + real_value.toFixed(4) ;
                 }
-                for (var ch = 3; ch < 7; ch++) {
+                for (var ch = 3; ch < 6; ch++) {
                     var real_value = rms_raw_values[ch] ;
-                    real_value = real_value * Vref / ADC_raw_max ;
+                    real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
                     real_value = real_value / current_devider ; // * Math.sqrt(2);
-                    str1 += '______' + real_value.toFixed(4);
+                    str1 += '__' + real_value.toFixed(4);
                 }
                 
-/*
-                var addr_Ua_rms = 0x4001B04C ;
-                var _index_Ua = _index + 6 + (addr_Ua_rms - addr_additional_data[0])  ;
-                var Ua_value = new Uint32Array(1) ;
-                Ua_value[0] = ((collected_data[_index_Ua+3] << 24) + (collected_data[_index_Ua+2] << 16) + (collected_data[_index_Ua+1] << 8) + collected_data[_index_Ua+0]) ; 
-                var Vref = 1.2 ;
-                var ADC_raw_max = (1 << 23)  ;
-                var voltage_220 = Ua_value[0] * Vref / ADC_raw_max ;
-                voltage_220 = 220 * Math.sqrt(2) * voltage_220 ;
-                str += ', Ua=' + voltage_220.toFixed(2) ;
-
-                var addr_Ib_rms = 0x4001B05C ;
-                var _index_Ib = _index + 6 + (addr_Ib_rms - addr_additional_data[0])  ;
-                var Ib_value = new Uint32Array(1) ;
-                Ib_value[0] = ((collected_data[_index_Ib+3] << 24) + (collected_data[_index_Ib+2] << 16) + (collected_data[_index_Ib+1] << 8) + collected_data[_index_Ib+0]) ; 
-                console.log('Ib_value', _index_Ib, Ib_value[0].toString(16), Ib_value[0]);
-                str += ' Ib=' + Ib_value[0].toString(10) ;
-*/                
+                var angle_raw_values = new Int32Array(7) ;
+                var addr_PhAangle_Ua = 0x4001B09C ;
+                var _index_PhAangle_Ua = _index + 6 + (addr_PhAangle_Ua - addr_additional_data[0])  ;
+                str2 += 'angle :'
+                //str += ', raw angle '
+                for (var ch = 0; ch < 6; ch++) {
+                    angle_raw_values[ch] = ((collected_data[4*ch+_index_PhAangle_Ua+3] << 24) + (collected_data[4*ch+_index_PhAangle_Ua+2] << 16) + (collected_data[4*ch+_index_PhAangle_Ua+1] << 8) + collected_data[4*ch+_index_PhAangle_Ua+0]) ; 
+                    //str += angle_raw_values[ch].toString(16) + ', ';
+                    if(angle_raw_values[ch] & (0x1 << 23)) { angle_raw_values[ch] += 0xFF000000 ; }
+                    var real_angle = angle_raw_values[ch] ;
+                    real_angle *= 180/(1<<23) ;
+                    str2 += '|||||' + real_angle.toFixed(4); ;
+                }
               }
+              beginlog(str2);
               beginlog(str1);
               beginlog(str);
+              beginlog('-');
               
               SetСhSel(-1) ;
 }
@@ -558,6 +662,11 @@ $('read_angle').addEventListener('click', function() {
     $('read_u32_Btn').click()
 });
 
+$('read_signal_status').addEventListener('click', function() {
+    $('input_addr').value = "0x4001B410" ;
+    $('input_n').value = "1" ;
+    $('read_u32_Btn').click()
+});
 
 $('read_d_gain').addEventListener('click', function() {
     $('input_addr').value = "0x4001C07C" ;
@@ -627,30 +736,6 @@ $('clrBtn').addEventListener('click', function() {
 });
 
 
-$('defaultAdcSelBtn').addEventListener('click', function() {
-	var send_byte = 0x00 ;
-    wake_build_packet(CMD_SETMODE,  new Uint8Array([send_byte]), 1);
-	serialController.write_raw(new Uint8Array(wake_out_buf));
-});
-
-$('AdcDataSelBtn').addEventListener('click', function() {
-	var send_byte = 0x81 ;
-    wake_build_packet(CMD_SETMODE,  new Uint8Array([send_byte]), 1);
-	serialController.write_raw(new Uint8Array(wake_out_buf));
-});
-
-$('EmulDataSelBtn').addEventListener('click', function() {
-	var send_byte = 0x82 ;
-    wake_build_packet(CMD_SETMODE,  new Uint8Array([send_byte]), 1);
-	serialController.write_raw(new Uint8Array(wake_out_buf));
-});
-
-$('AaDataSelBtn').addEventListener('click', function() {
-	var send_byte = 0x83 ;
-    wake_build_packet(CMD_SETMODE,  new Uint8Array([send_byte]), 1);
-	serialController.write_raw(new Uint8Array(wake_out_buf));
-});
-
 $('getVerBtn').addEventListener('click', function() {
     wake_build_packet( CMD_GETVER, new Uint8Array([0x00]), 1);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
@@ -715,6 +800,28 @@ $('setFilterBtn').addEventListener('click', function() {
     if( $('filter_sel').checked ) { send_byte |= 1<<0 ; }
     if( $('scale_sel').checked ) { send_byte |= 1<<1 ; }
     wake_build_packet( CMD_SET_FILTER_CFG, new Uint8Array([send_byte]), 1);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
+$('store_calibration_Btn').addEventListener('click', function() {
+    wake_build_packet( CMD_STORE_CALIBRATION, new Uint8Array([0x00]), 1);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
+$('read_calibration_Btn').addEventListener('click', function() {
+    wake_build_packet( CMD_READ_CALIBRATION, new Uint8Array([0x00]), 1);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
+$('calibr_set_cfg').addEventListener('click', function() {
+    var send_byte = 0x00 ;
+    if( $('use_hpf_check').checked ) { send_byte |= 1<<0 ; }
+    wake_build_packet( CMD_CALIBR_SETTING, new Uint8Array([send_byte]), 1);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
+$('rebootCmdBtn').addEventListener('click', function() {
+    wake_build_packet( CMD_REBOOT, new Uint8Array([0x00]), 1);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
 });
 
@@ -809,7 +916,7 @@ function ShowGrf() {
 //		setInterval(function(){renderChart()}, 50);
 		stg = 1;
 	} else {
-		gu.updateOptions({'file': datau});
+		gu.updateOptions({'file': datau, 'title': grapTitle});
 	}
 }
 
@@ -843,12 +950,19 @@ const CMD_READ_MEM_U32  = 0x21 ; // Чтение из памяти/регист�
 const CMD_WRITE_MEM_U8  = 0x22 ; // Запись в память/регистры
 const CMD_WRITE_MEM_U32 = 0x23 ; // Запись в память/регистры
 
+const CMD_CALIBR_SETTING    = 0x30 ; // Настройка параметров калибровки (HPF)
+const CMD_CALIBR_SHIFT      = 0x31 ; // Калибровка смещения
+const CMD_CALIBR_GAIN       = 0x32 ; // Калибровка амплитуды
+const CMD_CALIBR_PHASE      = 0x33 ; // Калибровка смещения фазы сигнала
+const CMD_READ_CALIBRATION  = 0x3E ; // Чтение калибровки из flash
+const CMD_STORE_CALIBRATION = 0x3F ; // Сохранение калибровки в flash
+
 const CMD_START_COLLECT    = 0xAA ; // Запуск измерения
 const CMD_COLLECTED_DATA   = 0xBB ; // Накопленные данные измерения
 
-var all_wake_commands = [CMD_NOP, CMD_ERR, CMD_ECHO, CMD_INFO, CMD_SETADDR, CMD_GETADDR, CMD_GETVER, CMD_SETMODE, CMD_GETMODE, CMD_SETMASK, CMD_SET_FILTER_CFG, CMD_READ_MEM_U8, CMD_READ_MEM_U32, CMD_WRITE_MEM_U8, CMD_WRITE_MEM_U32, CMD_START_COLLECT, CMD_COLLECTED_DATA] ;
+const CMD_REBOOT           = 0xFF ; // Перезагрузка
 
-
+var all_wake_commands = [CMD_NOP, CMD_ERR, CMD_ECHO, CMD_INFO, CMD_SETADDR, CMD_GETADDR, CMD_GETVER, CMD_SETMODE, CMD_GETMODE, CMD_SETMASK, CMD_SET_FILTER_CFG, CMD_READ_MEM_U8, CMD_READ_MEM_U32, CMD_WRITE_MEM_U8, CMD_WRITE_MEM_U32, CMD_CALIBR_SETTING, CMD_CALIBR_SHIFT, CMD_CALIBR_GAIN, CMD_CALIBR_PHASE, CMD_READ_CALIBRATION, CMD_STORE_CALIBRATION, CMD_START_COLLECT, CMD_COLLECTED_DATA, CMD_REBOOT] ;
 
 const  START_BYTE_AA  = 0xAA ;
 const  START_BYTE_F1  = 0xF1 ;
