@@ -44,12 +44,6 @@
   <input type="checkbox" name="radio_set_1" id="checkbox1" onclick="SetСhSel(0)" checked>Ua</input>
 </p>
 <details>
-    <summary>filter</summary>
-      <input type="checkbox" id="scale_sel" name="scale_sel">SCALE</input>
-      <input type="checkbox" id="filter_sel" name="filter_sel">FILTER</input>
-      <button id="setFilterBtn" type="button">set filter</button>
-</details>
-<details>
     <summary>template</summary>
       <button id="read_data" type="button">EMU read data</button>
       <button id="read_angle" type="button">EMU read angle</button>
@@ -66,6 +60,9 @@
       <button id="read_calibr" type="button">FLASH read calibr</button>
       <button id="write_calibr" type="button">FLASH write calibr</button>
       <button id="read_sn" type="button">INFO FLASH read SN</button>
+    <br>  
+      <button id="read_calibration_Btn" type="button">read calibration</button>
+
 </details>
 </p>
   <input id="input_addr" type="text" size="10" value="0x4001B000">
@@ -78,6 +75,20 @@
 </p>
 <details>
   <summary>calibration</summary>
+      <input type="checkbox" id="scale_sel" name="scale_sel">SCALER</input>
+      <input type="checkbox" id="filter_sel" name="filter_sel">50 Hz HPF</input>
+      <input type="checkbox" name="use_hpf_check" id="use_hpf_check">internal HPF</input>
+      <button id="calibr_set_cfg" type="button">set cfg</button>
+      <button id="store_calibration_Btn" type="button">CMD store calibration</button>
+      <br>  
+      <b>------------ zero set ----------</b>
+      <button id="autozero_Ua_Btn" type="button" onclick="calibrZero(0)" > Ua</button>
+      <button id="autozero_Ub_Btn" type="button" onclick="calibrZero(1)" > Ub</button>
+      <button id="autozero_Uc_Btn" type="button" onclick="calibrZero(2)" > Uc</button>
+      <button id="autozero_Ia_Btn" type="button" onclick="calibrZero(3)" > Ia</button>
+      <button id="autozero_Ib_Btn" type="button" onclick="calibrZero(4)" > Ib</button>
+      <button id="autozero_Ic_Btn" type="button" onclick="calibrZero(5)" > Ic</button>
+      <br>
       <b>correct gain, %</b>
       <input id="input_err_percent" type="text"  size="5" value="0" style="text-align:right";>
       <button id="gain_Ua_Btn" type="button" onclick="calibrGain(0)" > Ua</button>
@@ -86,20 +97,6 @@
       <button id="gain_Ia_Btn" type="button" onclick="calibrGain(3)" > Ia</button>
       <button id="gain_Ib_Btn" type="button" onclick="calibrGain(4)" > Ib</button>
       <button id="gain_Ic_Btn" type="button" onclick="calibrGain(5)" > Ic</button>
-      ------------ 
-      <button id="read_calibration_Btn" type="button">read calibration</button>
-      <br>  
-      <input type="checkbox" name="use_hpf_check" id="use_hpf_check">HPF</input>
-      <button id="calibr_set_cfg" type="button">set cfg</button>
-      zero set
-      <button id="autozero_Ua_Btn" type="button" onclick="calibrZero(0)" > Ua</button>
-      <button id="autozero_Ub_Btn" type="button" onclick="calibrZero(1)" > Ub</button>
-      <button id="autozero_Uc_Btn" type="button" onclick="calibrZero(2)" > Uc</button>
-      <button id="autozero_Ia_Btn" type="button" onclick="calibrZero(3)" > Ia</button>
-      <button id="autozero_Ib_Btn" type="button" onclick="calibrZero(4)" > Ib</button>
-      <button id="autozero_Ic_Btn" type="button" onclick="calibrZero(5)" > Ic</button>
-      ------------
-      <button id="store_calibration_Btn" type="button">CMD store calibration</button>
       <br>  
       <b>correct phase, °</b>
       <input id="input_phase_err_angke" type="text"  size="5" value="0" style="text-align:right";>
@@ -109,7 +106,6 @@
       <button id="phase_Ia_Btn" type="button" onclick="calibrPhase(3)" > Ia</button>
       <button id="phase_Ib_Btn" type="button" onclick="calibrPhase(4)" > Ib</button>
       <button id="phase_Ic_Btn" type="button" onclick="calibrPhase(5)" > Ic</button>
-      ------------
 </details>
 </p>
 
@@ -119,7 +115,7 @@
 
 <div style="height: auto; width: auto; text-align: left; overflow: auto;">
 <div id="terminal">
-	<div>Версия V0.0.1</div>
+	<div>Версия V0.0.2</div>
 </div>
 
 </body>
@@ -483,6 +479,9 @@ function DeviceRead(data) {
                 if(Rx_Cmd == CMD_READ_CALIBRATION) {
                     $('input_addr').value = '0x' + read_addr.toString(16).toUpperCase() ; 
                     $('input_n').value = read_items.toString(10) ;
+                    if(Rx_Dat[4] & (1<<0)) {$('use_hpf_check').checked = true ;} else {$('use_hpf_check').checked = false ;}
+                    if(Rx_Dat[4] & (1<<1)) {$('filter_sel').checked = true ;} else {$('filter_sel').checked = false ;}
+                    if(Rx_Dat[4] & (1<<2)) {$('scale_sel').checked = true ;} else {$('scale_sel').checked = false ;}
                 }
             } else 
             if(Rx_Cmd == CMD_COLLECTED_DATA){
@@ -497,6 +496,17 @@ function DeviceRead(data) {
 	 }
 	}
 }
+
+var cfg_serial_number = 0 ;
+var cfg_analog_gain ;
+var cfg_digital_gain ;
+var cfg_hw_filter ;
+var cfg_voltage_multiplier ;
+var cfg_voltage_divider ;
+var cfg_current_multiplier ;
+var cfg_current_divider ;
+var cfg_current_scale_multiplier ;
+var cfg_current_scale_divider ;
 
 function parse_collected_data(input_data)  {
               collected_data = input_data ;
@@ -518,24 +528,42 @@ function parse_collected_data(input_data)  {
               var str1 = '' ;
               var str2 = '' ;
               
+              var _shift_index = 0 ;
               var _config_data_index = collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA ;
-              var items_config_data = new Uint32Array(1) ;
-              items_config_data[0] = ((collected_data[_config_data_index+1] << 8) + collected_data[_config_data_index+0]) ; 
-              var hw_cfg_byte = collected_data[_config_data_index+2];
-              var analog_gain = ((collected_data[_config_data_index+4] << 8) + collected_data[_config_data_index+3]) ; 
-              var digital_gain = ((collected_data[_config_data_index+6] << 8) + collected_data[_config_data_index+5]) ; 
-              var signal_status = ((collected_data[_config_data_index+10] << 24) + (collected_data[_config_data_index+9] << 16) + (collected_data[_config_data_index+8] << 8) + collected_data[_config_data_index+7]) ; 
-              //console.log('config_data, index(', _config_data_index, '), n_bytes[', items_config_data[0], ']', hw_cfg_byte.toString(16));
+              var items_config_data = ((collected_data[_config_data_index+_shift_index+1] << 8) + collected_data[_config_data_index+_shift_index+0]) ; 
+              _shift_index += 2 ;
+              cfg_serial_number = ((collected_data[_config_data_index+_shift_index+3] << 24) + (collected_data[_config_data_index+_shift_index+2] << 16) + (collected_data[_config_data_index+_shift_index+1] << 8) + collected_data[_config_data_index+_shift_index+0]) ; 
+              _shift_index += 4 ;
+              cfg_analog_gain = ((collected_data[_config_data_index+_shift_index+1] << 8) + collected_data[_config_data_index+_shift_index+0]) ; 
+              _shift_index += 2 ;
+              cfg_digital_gain = ((collected_data[_config_data_index+_shift_index+1] << 8) + collected_data[_config_data_index+_shift_index+0]) ; 
+              _shift_index += 2 ;
+              cfg_hw_filter = ((collected_data[_config_data_index+_shift_index+3] << 24) + (collected_data[_config_data_index+_shift_index+2] << 16) + (collected_data[_config_data_index+_shift_index+1] << 8) + collected_data[_config_data_index+_shift_index+0]) ; 
+              _shift_index += 4 ;
+              cfg_voltage_multiplier  = ((collected_data[_config_data_index+_shift_index+3] << 24) + (collected_data[_config_data_index+_shift_index+2] << 16) + (collected_data[_config_data_index+_shift_index+1] << 8) + collected_data[_config_data_index+_shift_index+0]) ; 
+              _shift_index += 4 ;
+              cfg_voltage_divider  = ((collected_data[_config_data_index+_shift_index+3] << 24) + (collected_data[_config_data_index+_shift_index+2] << 16) + (collected_data[_config_data_index+_shift_index+1] << 8) + collected_data[_config_data_index+_shift_index+0]) ; 
+              _shift_index += 4 ;
+              cfg_current_multiplier  = ((collected_data[_config_data_index+_shift_index+3] << 24) + (collected_data[_config_data_index+_shift_index+2] << 16) + (collected_data[_config_data_index+_shift_index+1] << 8) + collected_data[_config_data_index+_shift_index+0]) ; 
+              _shift_index += 4 ;
+              cfg_current_divider  = ((collected_data[_config_data_index+_shift_index+3] << 24) + (collected_data[_config_data_index+_shift_index+2] << 16) + (collected_data[_config_data_index+_shift_index+1] << 8) + collected_data[_config_data_index+_shift_index+0]) ; 
+              _shift_index += 4 ;
+              cfg_current_scale_multiplier  = ((collected_data[_config_data_index+_shift_index+3] << 24) + (collected_data[_config_data_index+_shift_index+2] << 16) + (collected_data[_config_data_index+_shift_index+1] << 8) + collected_data[_config_data_index+_shift_index+0]) ; 
+              _shift_index += 4 ;
+              cfg_current_scale_divider  = ((collected_data[_config_data_index+_shift_index+3] << 24) + (collected_data[_config_data_index+_shift_index+2] << 16) + (collected_data[_config_data_index+_shift_index+1] << 8) + collected_data[_config_data_index+_shift_index+0]) ; 
+              _shift_index += 4 ;
                 
-              str += ', cfg(' + hw_cfg_byte.toString(16) + ', ' + analog_gain.toString(16) + ', ' + digital_gain.toString(16) + ', ' + signal_status.toString(16) + ')' ;
+              str += ', cfg[' + items_config_data +  '](' + cfg_serial_number + ', 0x' + cfg_analog_gain.toString(16) + ', 0x' + cfg_digital_gain.toString(16) + ', 0x' + cfg_hw_filter.toString(16)  + ')' ;
               
-              if(collected_data.length > (collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA+2+items_config_data[0])) {
-                var _index = collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA + 2 + items_config_data[0];
+              if(collected_data.length > (collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA+2+items_config_data)) {
+                var _index = collected_points*ch_in_use*BYTES_IN_ONE_CHANNEL_DATA + 2 + items_config_data;
                 var addr_additional_data = new Uint32Array(1) ;
                 var items_additional_data = new Uint32Array(1) ;
                 addr_additional_data[0] = ((collected_data[_index+3] << 24) + (collected_data[_index+2] << 16) + (collected_data[_index+1] << 8) + collected_data[_index+0]) ; 
                 items_additional_data[0] = ((collected_data[_index+5] << 8) + collected_data[_index+4]) ; 
                 //console.log('additional_data', ch_in_use, _index, addr_additional_data[0].toString(16), items_additional_data[0]);
+                
+                str += 'add_data[' + addr_additional_data[0].toString(16) + '](' + items_additional_data[0] + ')' ;
                 
                 var rms_raw_values = new Uint32Array(7) ;
                 var addr_Ua_rms = 0x4001B04C ;
@@ -549,20 +577,32 @@ function parse_collected_data(input_data)  {
                 
                 var ADC_full_scale_V = 0.93 ;
                 var ADC_raw_max = (1 << 21)  ;
-                //var voltage_devider =  4.7/(2310 + 4.7) ;
-                var voltage_devider =  1.4/(2310 + 1.4) ;
-                var current_devider =  1/(2500/(240*26/(240+26))) ;
+                //var voltage_coefficient =  4.7/(2310 + 4.7) ;
+                var voltage_coefficient =  (2310 + 1.4)/1.4 ;
+                var current_coefficient =  2500/(240*26/(240+26)) ;
+                
+                voltage_coefficient = cfg_voltage_multiplier/cfg_voltage_divider ;
+                if(cfg_hw_filter & (1<<2)) {
+                  current_coefficient = cfg_current_scale_multiplier/cfg_current_scale_divider ;
+                } else {
+                  current_coefficient = cfg_current_multiplier/cfg_current_divider ;
+                }
+                //cfg_analog_gain 
+                //cfg_digital_gain 
+
+                //console.log('voltage_coefficient: ', cfg_voltage_multiplier, cfg_voltage_divider, voltage_coefficient, ', current_coefficient: ', current_coefficient);
+                
                 str1 += 'rms  :'
                 for (var ch = 0; ch < 3; ch++) {
                     var real_value = rms_raw_values[ch] ;
                     real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
-                    real_value = real_value / voltage_devider ; // * Math.sqrt(2);
+                    real_value = voltage_coefficient * real_value  ;
                     str1 += '__' + real_value.toFixed(4) ;
                 }
                 for (var ch = 3; ch < 6; ch++) {
                     var real_value = rms_raw_values[ch] ;
                     real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
-                    real_value = real_value / current_devider ; // * Math.sqrt(2);
+                    real_value = current_coefficient * real_value  ;
                     str1 += '__' + real_value.toFixed(4);
                 }
                 
@@ -795,14 +835,6 @@ $('setMaskAndRegBtn').addEventListener('click', function() {
 	serialController.write_raw(new Uint8Array(wake_out_buf));
 });
 
-$('setFilterBtn').addEventListener('click', function() {
-    var send_byte = 0x00 ;
-    if( $('filter_sel').checked ) { send_byte |= 1<<0 ; }
-    if( $('scale_sel').checked ) { send_byte |= 1<<1 ; }
-    wake_build_packet( CMD_SET_FILTER_CFG, new Uint8Array([send_byte]), 1);
-	serialController.write_raw(new Uint8Array(wake_out_buf));
-});
-
 $('store_calibration_Btn').addEventListener('click', function() {
     wake_build_packet( CMD_STORE_CALIBRATION, new Uint8Array([0x00]), 1);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
@@ -816,6 +848,9 @@ $('read_calibration_Btn').addEventListener('click', function() {
 $('calibr_set_cfg').addEventListener('click', function() {
     var send_byte = 0x00 ;
     if( $('use_hpf_check').checked ) { send_byte |= 1<<0 ; }
+    if( $('filter_sel').checked )    { send_byte |= 1<<1 ; }
+    if( $('scale_sel').checked )     { send_byte |= 1<<2 ; }
+    
     wake_build_packet( CMD_CALIBR_SETTING, new Uint8Array([send_byte]), 1);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
 });
@@ -832,7 +867,7 @@ $('SaveBtn').addEventListener('click', function() {
   var encodedUri = encodeURI(csv);
   var link = document.createElement('a');
   link.setAttribute('href', encodedUri);
-  link.setAttribute('download',devicename.replace("#","")+"_"+".csv");
+  link.setAttribute('download',cfg_serial_number+"_"+".csv");
   link.click();
 });
 
@@ -848,7 +883,7 @@ function download(bytes, fname)  {
 var bufRawData = new Int8Array();
 $("butBufSave").onclick =  function() {
     console.log(bufRawData);
-    download(bufRawData, "logger3byteData.bin"); 
+    download(bufRawData, cfg_serial_number+"logger3byteData.bin"); 
 }
 
 var openFile = function(event) {
@@ -943,7 +978,7 @@ const CMD_GETVER      = 0x10 ; // Чтение адреса устройства
 const CMD_SETMODE     = 0x06 ; // Установка режима работы
 const CMD_GETMODE     = 0x07 ; // Чтение режима работы
 const CMD_SETMASK     = 0x08 ; // Установка маски
-const CMD_SET_FILTER_CFG   = 0x09 ; // Установка состояния аппаратного фильтра и скалера
+//const CMD_SET_FILTER_CFG   = 0x09 ; // Установка состояния аппаратного фильтра и скалера
 
 const CMD_READ_MEM_U8   = 0x20 ; // Чтение из памяти/регистров
 const CMD_READ_MEM_U32  = 0x21 ; // Чтение из памяти/регистров
@@ -962,7 +997,7 @@ const CMD_COLLECTED_DATA   = 0xBB ; // Накопленные данные из�
 
 const CMD_REBOOT           = 0xFF ; // Перезагрузка
 
-var all_wake_commands = [CMD_NOP, CMD_ERR, CMD_ECHO, CMD_INFO, CMD_SETADDR, CMD_GETADDR, CMD_GETVER, CMD_SETMODE, CMD_GETMODE, CMD_SETMASK, CMD_SET_FILTER_CFG, CMD_READ_MEM_U8, CMD_READ_MEM_U32, CMD_WRITE_MEM_U8, CMD_WRITE_MEM_U32, CMD_CALIBR_SETTING, CMD_CALIBR_SHIFT, CMD_CALIBR_GAIN, CMD_CALIBR_PHASE, CMD_READ_CALIBRATION, CMD_STORE_CALIBRATION, CMD_START_COLLECT, CMD_COLLECTED_DATA, CMD_REBOOT] ;
+var all_wake_commands = [CMD_NOP, CMD_ERR, CMD_ECHO, CMD_INFO, CMD_SETADDR, CMD_GETADDR, CMD_GETVER, CMD_SETMODE, CMD_GETMODE, CMD_SETMASK, CMD_READ_MEM_U8, CMD_READ_MEM_U32, CMD_WRITE_MEM_U8, CMD_WRITE_MEM_U32, CMD_CALIBR_SETTING, CMD_CALIBR_SHIFT, CMD_CALIBR_GAIN, CMD_CALIBR_PHASE, CMD_READ_CALIBRATION, CMD_STORE_CALIBRATION, CMD_START_COLLECT, CMD_COLLECTED_DATA, CMD_REBOOT] ;
 
 const  START_BYTE_AA  = 0xAA ;
 const  START_BYTE_F1  = 0xF1 ;
