@@ -216,6 +216,7 @@ function SetСhSel(ch_sel) {
           
     grapTitle = 'ADC data' ;
     if(datau[0].length == 3) {
+        var str = 'compare 2 signals:'
         console.log('\r\n----compare signals-----');
         var fft_1_input_data = [] ;
         var fft_2_input_data = [] ;
@@ -263,6 +264,12 @@ function SetСhSel(ch_sel) {
         console.log('phases', phase_1.toFixed(3), phase_2.toFixed(3), 'angle', angle.toFixed(3));
         console.log('fft',fft_1_max_fft_data_value.toFixed(2),fft_2_max_fft_data_value.toFixed(2), 'max1/max2', (fft_1_max_fft_data_value/fft_2_max_fft_data_value).toFixed(5));
         console.log('------------------------\r\n');
+        
+        str += ' freq(' + (freq_step*fft_1_max_fft_data_index).toFixed(2) + '___' + (freq_step*fft_2_max_fft_data_index).toFixed(2) + ')' ;
+        str += ', rms1/rms2(' + (rms_value_1 / rms_value_2).toFixed(5) + ')' ;
+        str += ', max1/max2(' + (fft_1_max_fft_data_value/fft_2_max_fft_data_value).toFixed(5) + ')';
+        str += ', angle(' + angle.toFixed(3) + ')' ;
+        beginlog(str);
     }
     
     if($('checkboxFft').checked) {
@@ -620,12 +627,13 @@ function parse_collected_data(input_data)  {
                     str2 += '|||||' + real_angle.toFixed(4); ;
                 }
               }
+              
+              SetСhSel(-1) ;
+              
               beginlog(str2);
               beginlog(str1);
               beginlog(str);
               beginlog('-');
-              
-              SetСhSel(-1) ;
 }
 
 var read_write_addr = 0 ;
