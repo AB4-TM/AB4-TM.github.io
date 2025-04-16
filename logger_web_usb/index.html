@@ -23,6 +23,12 @@
   <button id="startCycleCollectionBtn" type="button">START CYCLE COLLECTION</button>
   <button id="rebootCmdBtn" type="button">CMD reboot</button>
 </p>
+<details>
+    <summary>base64</summary>
+  <input id="input_base64" type="text" size="50" value="">
+  <button id="parseBase64Btn" type="button">parse base64</button>
+</details>
+</p>
   <input type="checkbox" id="chmask6" name="chmask6" >
   <input type="checkbox" id="chmask5" name="chmask5" checked>
   <input type="checkbox" id="chmask4" name="chmask4" checked>
@@ -861,6 +867,21 @@ $('calibr_set_cfg').addEventListener('click', function() {
     
     wake_build_packet( CMD_CALIBR_SETTING, new Uint8Array([send_byte]), 1);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
+function base64ToArrayBuffer(base64) {
+    var binaryString = atob(base64);
+    var bytes = new Uint8Array(binaryString.length);
+    for (var i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+$('parseBase64Btn').addEventListener('click', function() {
+    var input_buf = [] ;
+    input_buf = new Uint8Array(base64ToArrayBuffer($('input_base64').value)) ;
+    parse_collected_data(input_buf);
 });
 
 $('rebootCmdBtn').addEventListener('click', function() {
