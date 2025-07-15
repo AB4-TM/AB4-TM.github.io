@@ -17,14 +17,21 @@
   <button id="SaveBtn" type="button">SAVE GRAPH TO CSV</button>
   <button id="butBufSave" type="button">Save buf.bin</button>
   read from file <input type='file' accept='.bin' onchange='openFile(event)'><br>
+<details>
+  <summary>fw_update</summary>
+  new.upd file <input type='file' accept='.upd' onchange='open_fw_update_file(event)'>
+  <button id="butSendFw" type="button">send fw</button>
+  <button id="butApplyFw" type="button">apply fw</button>
+</details>
 </p>
   <button id="getVerBtn" type="button">GET VER</button>
   <button id="startCollectionBtn" type="button">START COLLECTION</button>
   <button id="startCycleCollectionBtn" type="button">START CYCLE COLLECTION</button>
   <button id="rebootCmdBtn" type="button">CMD reboot</button>
+  <button id="crossUartBtn" type="button">CMD ESP cross UART</button>
 </p>
 <details>
-    <summary>base64</summary>
+  <summary>base64</summary>
   <input id="input_base64" type="text" size="50" value="">
   <button id="parseBase64Btn" type="button">parse base64</button>
 </details>
@@ -68,7 +75,6 @@
       <button id="read_sn" type="button">INFO FLASH read SN</button>
     <br>  
       <button id="read_calibration_Btn" type="button">read calibration</button>
-
 </details>
 </p>
   <input id="input_addr" type="text" size="10" value="0x4001B000">
@@ -121,7 +127,7 @@
 
 <div style="height: auto; width: auto; text-align: left; overflow: auto;">
 <div id="terminal">
-	<div>Версия V0.0.2</div>
+	<div>Версия V0.0.3</div>
 </div>
 
 </body>
@@ -193,6 +199,25 @@ function SetСhSel(ch_sel) {
               index_in_buf += BYTES_IN_ONE_CHANNEL_DATA ;
               raw_3byte_value = raw_3byte_value >> 2 ;
               if(raw_3byte_value & (0x1 << 21)) { raw_3byte_value = -((0x1 << 21) - (raw_3byte_value & ~(0x1 << 21))) ; }
+
+              if(_ch < 3) {
+              //напряжения
+                    var real_value = raw_3byte_value ;
+                    real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
+                    real_value = voltage_coefficient * real_value  ;
+                    real_value = real_value / voltage_a_gain[_ch] ;
+                    real_value = real_value / voltage_d_gain[_ch] ;
+                    raw_3byte_value = real_value ;
+              } else {
+              //токи
+                    var real_value = raw_3byte_value ;
+                    real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
+                    real_value = current_coefficient * real_value  ;
+                    real_value = real_value / current_a_gain[_ch-3] ;
+                    real_value = real_value / current_d_gain[_ch-3] ;
+                    raw_3byte_value = real_value ;
+              }
+
               summ_data[_ch] += raw_3byte_value ;
               
               if( (_ch == 0) && ($('checkbox1').checked) ) { push_data.push(raw_3byte_value);}
@@ -216,6 +241,8 @@ function SetСhSel(ch_sel) {
       //console.log("push_data", push_data);
       datau.push(push_data); 
     }
+    
+    if(datau.length == 0) { return;}
 
     for (var _ch=0; _ch<7; _ch++) { middle_data[_ch] = summ_data[_ch] / collected_points; }
     //console.log('middle_data', middle_data);
@@ -447,7 +474,7 @@ var rawdataIndex ;
 
 function DeviceRead(data) {
 	var parse_status ;
-    //console.log("DeviceRead Rx_Sta=" + Rx_Sta + ", Rx_Nbt=" + Rx_Nbt + " new data :" + data);
+    //console.log("DeviceRead Rx_Sta=" + Rx_Sta + ", Rx_Nbt=" + Rx_Nbt + " new data :" + data + String.fromCharCode(...data));
 	for (var ii=0; ii<data.length; ii++) {
 	 parse_status = parser_wake(data[ii]);
 	 
@@ -457,7 +484,7 @@ function DeviceRead(data) {
       return ;
       } else 
 	 if (parse_status == RX_DONE) {
-	  //if(Rx_Cmd != CMD_COLLECTED_DATA) {console.log("[RX_DONE] CMD=" + Rx_Cmd, " DATA:", Rx_Dat);}
+	  if( (Rx_Cmd != CMD_COLLECTED_DATA) && (Rx_Cmd != CMD_ESP_DATA) ) {console.log("[RX_DONE] CMD=" + Rx_Cmd, " DATA:", Rx_Dat);}
       Rx_Sta = WAIT_START_AA;
 	  
 	  if(1) {
@@ -468,7 +495,10 @@ function DeviceRead(data) {
                 for (var i = 0; i < Rx_Dat.length; i++) {s += String.fromCharCode(Rx_Dat[i]);}
                 beginlog(s);
             } else 
-            if( (Rx_Cmd == CMD_READ_MEM_U8) || (Rx_Cmd == CMD_READ_MEM_U32) || (Rx_Cmd == CMD_READ_CALIBRATION)  ) {
+            if(Rx_Cmd == CMD_FW_UPDATE) {
+                if(Rx_Dat[0] == 0) { beginlog("CRC ERR"); } else { beginlog("CRC OK"); }
+            } else 
+            if( ((Rx_Cmd == CMD_READ_MEM_U8) || (Rx_Cmd == CMD_READ_MEM_U32) || (Rx_Cmd == CMD_READ_CALIBRATION)) && (Rx_Nbt > 4) ) {
                 var read_addr = ((Rx_Dat[3] << 24) + (Rx_Dat[2] << 16) + (Rx_Dat[1] << 8) + Rx_Dat[0]) ; ;
                 var read_items = Rx_Dat[4] ; ;
                 Rx_Dat = Rx_Dat.slice(5) ;
@@ -501,7 +531,37 @@ function DeviceRead(data) {
               bufRawData = Uint8Array.from(Rx_Dat);
               
               parse_collected_data(Rx_Dat);
+            } else 
+            if(Rx_Cmd == CMD_ESP_DATA){
+                var byteArray = new Uint8Array(Rx_Dat) ;
+                var mask = byteArray[0] ;
+                byteArray = byteArray.slice(1) ;
+                var float_arr = new Float32Array(byteArray.buffer);
+                //console.log("float_arr", float_arr);
+                
+                datau = [] ;
+                for (var i=0; i<float_arr.length; i++) {
+                    var push_data = [i, float_arr[i]] ;
+                    datau.push(push_data); 
+                }
+                grapTitle = 'ESP32 data' + ',  0x' + mask.toString(16).toUpperCase() ;
+                graph_labels = ['num', 'float'] ;
+                ShowGrf();
+            } else 
+            if(Rx_Cmd == CMD_SETMASK){
+			  if(Rx_Nbt > 2) {
+              //пришла команда, а не ACK
+			  wake_build_packet( CMD_SETMASK, Rx_Dat, 1);
+			  serialController.write_raw(new Uint8Array(wake_out_buf));
+			  }
+            } else 
+            if(Rx_Cmd == CMD_START_COLLECT){
+			  if(bufRawData.length) {
+			    wake_build_packet( CMD_COLLECTED_DATA, bufRawData, bufRawData.length);
+			    serialController.write_raw(new Uint8Array(wake_out_buf));
+			  }
             }
+			
         } // no ACK
 	  }
 	  
@@ -520,6 +580,18 @@ var cfg_current_multiplier ;
 var cfg_current_divider ;
 var cfg_current_scale_multiplier ;
 var cfg_current_scale_divider ;
+
+var ADC_full_scale_V = 0.93 ;
+var ADC_raw_max = (1 << 21)  ;
+//var voltage_coefficient =  4.7/(2310 + 4.7) ;
+var voltage_coefficient =  (2310 + 1.4)/1.4 ;
+var current_coefficient =  2500/(240*26/(240+26)) ;
+
+var voltage_a_gain = [1, 1, 1] ;
+var current_a_gain = [1, 1, 1] ;
+var voltage_d_gain = [1, 1, 1] ;
+var current_d_gain = [1, 1, 1] ;
+
 
 function parse_collected_data(input_data)  {
               collected_data = input_data ;
@@ -588,11 +660,6 @@ function parse_collected_data(input_data)  {
                     //str += rms_raw_values[ch] + ', ';
                 }
                 
-                var ADC_full_scale_V = 0.93 ;
-                var ADC_raw_max = (1 << 21)  ;
-                //var voltage_coefficient =  4.7/(2310 + 4.7) ;
-                var voltage_coefficient =  (2310 + 1.4)/1.4 ;
-                var current_coefficient =  2500/(240*26/(240+26)) ;
                 
                 voltage_coefficient = cfg_voltage_multiplier/cfg_voltage_divider ;
                 if(cfg_hw_filter & (1<<2)) {
@@ -600,9 +667,49 @@ function parse_collected_data(input_data)  {
                 } else {
                   current_coefficient = cfg_current_multiplier/cfg_current_divider ;
                 }
-                //cfg_analog_gain 
-                //cfg_digital_gain 
+                
+                //регистр PGACON (Analog PGA amplification configuration)
+                if( ((cfg_analog_gain >>  0) & 0x3) == 0x1) { current_a_gain[0] =  2; }
+                if( ((cfg_analog_gain >>  0) & 0x3) == 0x2) { current_a_gain[0] =  8; }
+                if( ((cfg_analog_gain >>  0) & 0x3) == 0x3) { current_a_gain[0] = 16; }
 
+                if( ((cfg_analog_gain >>  2) & 0x3) == 0x1) { current_a_gain[1] =  2; }
+                if( ((cfg_analog_gain >>  2) & 0x3) == 0x2) { current_a_gain[1] =  8; }
+                if( ((cfg_analog_gain >>  2) & 0x3) == 0x3) { current_a_gain[1] = 16; }
+
+                if( ((cfg_analog_gain >>  4) & 0x3) == 0x1) { current_a_gain[2] =  2; }
+                if( ((cfg_analog_gain >>  4) & 0x3) == 0x2) { current_a_gain[2] =  8; }
+                if( ((cfg_analog_gain >>  4) & 0x3) == 0x3) { current_a_gain[2] = 16; }
+
+                if( ((cfg_analog_gain >>  9) & 0x3) == 0x1) { voltage_a_gain[0] = 2; voltage_a_gain[1] = 2; voltage_a_gain[2] = 2; }
+                if( ((cfg_analog_gain >>  9) & 0x3) == 0x2) { voltage_a_gain[0] = 8; voltage_a_gain[1] = 8; voltage_a_gain[2] = 8; }
+                if( ((cfg_analog_gain >>  9) & 0x3) == 0x3) { voltage_a_gain[0] = 8; voltage_a_gain[2] = 8; voltage_a_gain[2] = 8; }
+
+                //регистр Digtal_gain (Digital shift amplification)
+                if( ((cfg_digital_gain >> 0) & 0x3) == 0x1) { current_d_gain[0] =  2; }
+                if( ((cfg_digital_gain >> 0) & 0x3) == 0x2) { current_d_gain[0] =  4; }
+                if( ((cfg_digital_gain >> 0) & 0x3) == 0x3) { current_d_gain[0] =  8; }
+                
+                if( ((cfg_digital_gain >> 2) & 0x3) == 0x1) { current_d_gain[1] =  2; }
+                if( ((cfg_digital_gain >> 2) & 0x3) == 0x2) { current_d_gain[1] =  4; }
+                if( ((cfg_digital_gain >> 2) & 0x3) == 0x3) { current_d_gain[1] =  8; }
+                
+                if( ((cfg_digital_gain >> 4) & 0x3) == 0x1) { current_d_gain[2] =  2; }
+                if( ((cfg_digital_gain >> 4) & 0x3) == 0x2) { current_d_gain[2] =  4; }
+                if( ((cfg_digital_gain >> 4) & 0x3) == 0x3) { current_d_gain[2] =  8; }
+                
+                if( ((cfg_digital_gain >>  8) & 0x3) == 0x1) { voltage_d_gain[0] =  2; }
+                if( ((cfg_digital_gain >>  8) & 0x3) == 0x2) { voltage_d_gain[0] =  4; }
+                if( ((cfg_digital_gain >>  8) & 0x3) == 0x3) { voltage_d_gain[0] =  8; }
+                
+                if( ((cfg_digital_gain >> 10) & 0x3) == 0x1) { voltage_d_gain[1] =  2; }
+                if( ((cfg_digital_gain >> 10) & 0x3) == 0x2) { voltage_d_gain[1] =  4; }
+                if( ((cfg_digital_gain >> 10) & 0x3) == 0x3) { voltage_d_gain[1] =  8; }
+                
+                if( ((cfg_digital_gain >> 12) & 0x3) == 0x1) { voltage_d_gain[2] =  2; }
+                if( ((cfg_digital_gain >> 12) & 0x3) == 0x2) { voltage_d_gain[2] =  4; }
+                if( ((cfg_digital_gain >> 12) & 0x3) == 0x3) { voltage_d_gain[2] =  8; }
+                
                 //console.log('voltage_coefficient: ', cfg_voltage_multiplier, cfg_voltage_divider, voltage_coefficient, ', current_coefficient: ', current_coefficient);
                 
                 str1 += 'rms  :'
@@ -610,12 +717,16 @@ function parse_collected_data(input_data)  {
                     var real_value = rms_raw_values[ch] ;
                     real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
                     real_value = voltage_coefficient * real_value  ;
+                    real_value = real_value / voltage_a_gain[ch] ;
+                    real_value = real_value / voltage_d_gain[ch] ;
                     str1 += '__' + real_value.toFixed(4) ;
                 }
                 for (var ch = 3; ch < 6; ch++) {
                     var real_value = rms_raw_values[ch] ;
                     real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
                     real_value = current_coefficient * real_value  ;
+                    real_value = real_value / current_a_gain[ch-3] ;
+                    real_value = real_value / current_d_gain[ch-3] ;
                     str1 += '__' + real_value.toFixed(4);
                 }
                 
@@ -814,7 +925,7 @@ $('setMaskBtn').addEventListener('click', function() {
     if( $('chmask4').checked ) { send_byte |= 1<<4 ; }
     if( $('chmask5').checked ) { send_byte |= 1<<5 ; }
     if( $('chmask6').checked ) { send_byte |= 1<<6 ; }
-    wake_build_packet( CMD_SETMASK, new Uint8Array([send_byte]), 1);
+    wake_build_packet( CMD_SETMASK, new Uint8Array([send_byte, 0xFF, 0xFF]), 3);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
 });
 
@@ -881,6 +992,7 @@ function base64ToArrayBuffer(base64) {
 $('parseBase64Btn').addEventListener('click', function() {
     var input_buf = [] ;
     input_buf = new Uint8Array(base64ToArrayBuffer($('input_base64').value)) ;
+    bufRawData = Uint8Array.from(input_buf);
     parse_collected_data(input_buf);
 });
 
@@ -888,6 +1000,12 @@ $('rebootCmdBtn').addEventListener('click', function() {
     wake_build_packet( CMD_REBOOT, new Uint8Array([0x00]), 1);
 	serialController.write_raw(new Uint8Array(wake_out_buf));
 });
+
+$('crossUartBtn').addEventListener('click', function() {
+    wake_build_packet( CMD_ESP_MODE, new Uint8Array([0x01]), 1);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+});
+
 
 $('SaveBtn').addEventListener('click', function() {
   log('fftsave to csv');
@@ -915,12 +1033,76 @@ $("butBufSave").onclick =  function() {
     download(bufRawData, cfg_serial_number+"logger3byteData.bin"); 
 }
 
+const APP_START_ADDR        =  0x1000 ;
+const OTAP_AREA_START_ADDR  = 0x40000/2 ;
+const IAP_UPGRADE_INFO_ADDR = 0x40000 - 0x400 - 0x400 ;
+const CHUNK_PORTION_LEN = 256 ;
+var update_file_bytes_remain = new Uint8Array(0);
+var addr_for_write_update ;
+var send_portion ;
+var intervalId ;
+$("butSendFw").onclick =  function() {
+    if (update_file_bytes.length == 0) {
+        console.log("no new firmware");
+    } else {
+        console.log("send new firmware");
+        beginlog("send new firmware");
+        update_file_bytes_remain = update_file_bytes ;
+        addr_for_write_update = OTAP_AREA_START_ADDR ;
+        //send_fw_update_process();
+        intervalId = setInterval(send_fw_update_process, 300);
+    }
+}
+
+var send_fw_update_process = function(event) {
+    send_portion = update_file_bytes_remain.slice(0, CHUNK_PORTION_LEN);
+    if(send_portion.length != 0) {
+        console.log("send_fw_update_process", addr_for_write_update.toString(16), update_file_bytes_remain.length);
+        
+        wake_build_packet(CMD_WRITE_MEM_U8, new Uint8Array([addr_for_write_update, addr_for_write_update >> 8, addr_for_write_update >> 16, addr_for_write_update >> 24, send_portion.length, ...send_portion]), 5+send_portion.length);
+        serialController.write_raw(new Uint8Array(wake_out_buf));
+
+        update_file_bytes_remain = update_file_bytes_remain.slice(CHUNK_PORTION_LEN, )
+        addr_for_write_update += send_portion.length ;
+    } else {
+        console.log("stop send_fw_update_process");
+        beginlog("stop send_fw_update_process");
+        clearInterval(intervalId);
+    }
+}
+
+var send_fw_update_process_timeout = function(event) {
+    console.log("send_fw_update_process_timeout");
+}
+
+$('butApplyFw').addEventListener('click', function() {
+    wake_build_packet( CMD_FW_UPDATE, new Uint8Array([0x02, OTAP_AREA_START_ADDR, OTAP_AREA_START_ADDR >> 8, OTAP_AREA_START_ADDR >> 16, OTAP_AREA_START_ADDR >> 24]), 5);
+	serialController.write_raw(new Uint8Array(wake_out_buf));
+    beginlog("apply new firmware");
+});
+
 var openFile = function(event) {
   var input = event.target;
 
   var reader = new FileReader();
   reader.onload = function() {
-              parse_collected_data(new Uint8Array(reader.result)) ;
+              parse_collected_data(bufRawData = new Uint8Array(reader.result)) ;
+  };
+  reader.readAsArrayBuffer(input.files[0]);
+};
+
+var update_file_bytes = new Uint8Array(0);
+var open_fw_update_file = function(event) {
+  var input = event.target;
+
+  var reader = new FileReader();
+  reader.onload = function() {
+        const arrayBuffer = reader.result;
+        update_file_bytes = new Uint8Array(arrayBuffer);
+        console.log(update_file_bytes);
+        const sign = new TextDecoder().decode(update_file_bytes.slice(0, 4));
+        console.log(sign);
+        if (sign == "LRUP") { console.log("OK"); } else { console.log("ERR"); update_file_bytes = [] ; }
   };
   reader.readAsArrayBuffer(input.files[0]);
 };
@@ -940,7 +1122,8 @@ function convertArrayOfObjectsToCSV(value){
 		keys.forEach(function(key){
 			if (ctr > 0)
 				result += columnDelimiter;
-			result += item[key].toFixed(3).replace(".",",");
+			//result += item[key].toFixed(3).replace(".",",");
+            result += item[key].toFixed(20).replace(".",",");
 			ctr++;
 		});
 		result += lineDelimiter;
@@ -1021,12 +1204,17 @@ const CMD_CALIBR_PHASE      = 0x33 ; // Калибровка смещения ф
 const CMD_READ_CALIBRATION  = 0x3E ; // Чтение калибровки из flash
 const CMD_STORE_CALIBRATION = 0x3F ; // Сохранение калибровки в flash
 
+const CMD_FW_UPDATE         = 0x80 ; // обновление ПО по UART
+
 const CMD_START_COLLECT    = 0xAA ; // Запуск измерения
 const CMD_COLLECTED_DATA   = 0xBB ; // Накопленные данные измерения
 
+const CMD_ESP_MODE         = 0xF0 ; // установка режима ESP32 (crossUART - пересылка из одного UART в другой)
+const CMD_ESP_DATA         = 0xFB ; // массив с данными из ESP32 для отображения на графике, float
+
 const CMD_REBOOT           = 0xFF ; // Перезагрузка
 
-var all_wake_commands = [CMD_NOP, CMD_ERR, CMD_ECHO, CMD_INFO, CMD_SETADDR, CMD_GETADDR, CMD_GETVER, CMD_SETMODE, CMD_GETMODE, CMD_SETMASK, CMD_READ_MEM_U8, CMD_READ_MEM_U32, CMD_WRITE_MEM_U8, CMD_WRITE_MEM_U32, CMD_CALIBR_SETTING, CMD_CALIBR_SHIFT, CMD_CALIBR_GAIN, CMD_CALIBR_PHASE, CMD_READ_CALIBRATION, CMD_STORE_CALIBRATION, CMD_START_COLLECT, CMD_COLLECTED_DATA, CMD_REBOOT] ;
+var all_wake_commands = [CMD_NOP, CMD_ERR, CMD_ECHO, CMD_INFO, CMD_SETADDR, CMD_GETADDR, CMD_GETVER, CMD_SETMODE, CMD_GETMODE, CMD_SETMASK, CMD_READ_MEM_U8, CMD_READ_MEM_U32, CMD_WRITE_MEM_U8, CMD_WRITE_MEM_U32, CMD_CALIBR_SETTING, CMD_CALIBR_SHIFT, CMD_CALIBR_GAIN, CMD_CALIBR_PHASE, CMD_READ_CALIBRATION, CMD_STORE_CALIBRATION, CMD_START_COLLECT, CMD_COLLECTED_DATA, CMD_ESP_MODE, CMD_ESP_DATA, CMD_REBOOT, CMD_FW_UPDATE] ;
 
 const  START_BYTE_AA  = 0xAA ;
 const  START_BYTE_F1  = 0xF1 ;
