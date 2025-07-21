@@ -46,7 +46,8 @@
   <button id="setMaskBtn" type="button">set mask</button>
   <button id="setMask2048Btn" type="button">set mask 2048</button>
   <button id="setMaskAndRegBtn" type="button">set mask+REG data</button>
-  <input type="checkbox" name="radio_set" id="checkboxFft">FFT</input>  
+  <input type="checkbox" name="radio_set" id="checkboxFft" onclick="SetСhSel(-1)">FFT</input>  
+  <input type="checkbox" name="radio_set" id="checkboxRaw" onclick="SetСhSel(-1)">RAW</input>  
   <br>
   <input type="checkbox" name="radio_set_7" id="checkbox7" onclick="SetСhSel(6)" >In</input>
   <input type="checkbox" name="radio_set_6" id="checkbox6" onclick="SetСhSel(5)" >Ic</input>
@@ -127,7 +128,7 @@
 
 <div style="height: auto; width: auto; text-align: left; overflow: auto;">
 <div id="terminal">
-	<div>Версия V0.0.3</div>
+	<div>Версия V0.0.4</div>
 </div>
 
 </body>
@@ -200,22 +201,24 @@ function SetСhSel(ch_sel) {
               raw_3byte_value = raw_3byte_value >> 2 ;
               if(raw_3byte_value & (0x1 << 21)) { raw_3byte_value = -((0x1 << 21) - (raw_3byte_value & ~(0x1 << 21))) ; }
 
-              if(_ch < 3) {
-              //напряжения
-                    var real_value = raw_3byte_value ;
-                    real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
-                    real_value = voltage_coefficient * real_value  ;
-                    real_value = real_value / voltage_a_gain[_ch] ;
-                    real_value = real_value / voltage_d_gain[_ch] ;
-                    raw_3byte_value = real_value ;
-              } else {
-              //токи
-                    var real_value = raw_3byte_value ;
-                    real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
-                    real_value = current_coefficient * real_value  ;
-                    real_value = real_value / current_a_gain[_ch-3] ;
-                    real_value = real_value / current_d_gain[_ch-3] ;
-                    raw_3byte_value = real_value ;
+              if($('checkboxRaw').checked == false) {
+                  if(_ch < 3) {
+                  //напряжения
+                        var real_value = raw_3byte_value ;
+                        real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
+                        real_value = voltage_coefficient * real_value  ;
+                        real_value = real_value / voltage_a_gain[_ch] ;
+                        real_value = real_value / voltage_d_gain[_ch] ;
+                        raw_3byte_value = real_value ;
+                  } else {
+                  //токи
+                        var real_value = raw_3byte_value ;
+                        real_value = (real_value / ADC_raw_max) * ADC_full_scale_V  ;
+                        real_value = current_coefficient * real_value  ;
+                        real_value = real_value / current_a_gain[_ch-3] ;
+                        real_value = real_value / current_d_gain[_ch-3] ;
+                        raw_3byte_value = real_value ;
+                  }
               }
 
               summ_data[_ch] += raw_3byte_value ;
@@ -323,6 +326,7 @@ function SetСhSel(ch_sel) {
           X_real[i] = fft_out[i].re;
           X_imag[i] = fft_out[i].im;
           X_abs[i] = Math.sqrt(fft_out[i].re * fft_out[i].re + fft_out[i].im * fft_out[i].im);
+          X_abs[i] = 2 * X_abs[i] / collected_points ;
           datau.push([i*freq_step, X_abs[i]]); 
         }    
         //console.log("X_abs", X_abs);
@@ -489,6 +493,7 @@ function DeviceRead(data) {
 	  
 	  if(1) {
 		//beginlog("parse ");
+        //console.log("RX_DONE, Rx_Cmd=" + Rx_Cmd + ", Rx_Nbt=" + Rx_Nbt);
            {
             if(Rx_Cmd == CMD_GETVER){
                 var s = "";
