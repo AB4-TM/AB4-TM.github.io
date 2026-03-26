@@ -7,273 +7,397 @@ let stopButton = document.getElementById('stopBtn');
 let clearButton = document.getElementById('clrBtn');
 let temperatureLabel = document.getElementById('temperature');
 
+// Кэш объектов
+let deviceCache = null;
+let charArray = null;
+let gattServer = null;
+let modeSelectCharacteristic = null;
+let debugPipeInOutCharacteristic = null;
 
+// UUID сервисов и характеристик
+const SERVICES = {
+    MAIN: 0xAA80,
+    DEBUG: 'f000deb0-0451-4000-b000-000000000000'
+};
+
+const CHARACTERISTICS = {
+    TEMPERATURE: 0xAA01,
+    START_STOP: 0xAA02,
+    MODE_SELECT: 0xAA65,
+    DEBUG_PIPE: 'f000deb1-0451-4000-b000-000000000000'
+};
 
 // при нажатии на кнопку START
 startButton.addEventListener('click', function() {
-  log('start');
-  var uuid = $('#startBtn').attr('data-uuid');
-  var value = 0x01 ; // $('#startBtn').attr('data-value');
-  var characteristic = charArray[uuid].characteristic;
-  var converted = new Uint8Array([value]);
-  characteristic.writeValue(converted);
+    if (!charArray || !charArray[CHARACTERISTICS.START_STOP]) {
+        log('Сначала подключитесь к устройству', 'error');
+        return;
+    }
+    
+    log('Отправка команды START');
+    let characteristic = charArray[CHARACTERISTICS.START_STOP].characteristic;
+    let converted = new Uint8Array([0x01]);
+    characteristic.writeValue(converted)
+        .then(() => log('Команда START отправлена', 'success'))
+        .catch(error => log('Ошибка START: ' + error, 'error'));
+    
+    if (modeSelectCharacteristic) {
+        let converted_1 = new Uint8Array([0x02]);
+        modeSelectCharacteristic.writeValue(converted_1)
+            .catch(error => log('Ошибка установки режима: ' + error, 'error'));
+    }
 });
-
 
 // при нажатии на кнопку STOP
 stopButton.addEventListener('click', function() {
-  log('stop');
-  var uuid = $('#stopBtn').attr('data-uuid');
-  var value = $('#stopBtn').attr('data-value');
-  var characteristic = charArray[uuid].characteristic;
-  var converted = new Uint8Array([value]);
-  characteristic.writeValue(converted);
+    if (!charArray || !charArray[CHARACTERISTICS.START_STOP]) {
+        log('Сначала подключитесь к устройству', 'error');
+        return;
+    }
+    
+    log('Отправка команды STOP');
+    let characteristic = charArray[CHARACTERISTICS.START_STOP].characteristic;
+    let converted = new Uint8Array([0x00]);
+    characteristic.writeValue(converted)
+        .then(() => log('Команда STOP отправлена', 'success'))
+        .catch(error => log('Ошибка STOP: ' + error, 'error'));
 });
 
 // при нажатии на кнопку CLEAR
 clearButton.addEventListener('click', function() {
-  log('clear');
-  terminalContainer.innerHTML = "";
+    terminalContainer.innerHTML = '<div>Версия V0.0.11</div>';
+    log('Терминал очищен');
 });
 
-
-// Записать значение в характеристику
-function writeToCharacteristic(characteristic, data) {
-  characteristic.writeValue(new TextEncoder().encode(data));
-}
-
-// Подключение к устройству при нажатии на кнопку Connect
+// Подключение к устройству
 connectButton.addEventListener('click', function() {
-  connect();
+    connect();
 });
 
-// Отключение от устройства при нажатии на кнопку Disconnect
+// Отключение от устройства
 disconnectButton.addEventListener('click', function() {
-  disconnect();
+    disconnect();
 });
 
-
-// Кэш объекта выбранного устройства
-let deviceCache = null;
-
-let coefficientValueCharacteristic = null;
-let fftCharacteristic = null;
-
-
-// Запустить выбор Bluetooth устройства и подключиться к выбранному
-function connect() {
-  var _dev = (deviceCache ? Promise.resolve(deviceCache) : requestBluetoothDevice());
-  _dev.then(device => showValues(device));
-  return _dev
-    .then(device => connectDeviceAndCacheCharacteristic(device))
-    .then(characteristic => startNotifications(characteristic))
-    .catch(error => log(error));
+// Запустить выбор Bluetooth устройства и подключиться
+async function connect() {
+    if (deviceCache && deviceCache.gatt.connected) {
+        log('Уже подключены к устройству');
+        return;
+    }
+    
+    try {
+        await requestBluetoothDevice();
+        await connectToDevice();
+        await discoverServicesAndCharacteristics();
+        log('Подключение успешно завершено', 'success');
+        connectButton.disabled = true;
+        disconnectButton.disabled = false;
+    } catch (error) {
+        log('Ошибка подключения: ' + error.message, 'error');
+        console.error(error);
+    }
 }
 
 // Запрос выбора Bluetooth устройства
-function requestBluetoothDevice() {
-  log('Requesting bluetooth device...');
+async function requestBluetoothDevice() {
+    log('Поиск Bluetooth устройств...');
 
-  return navigator.bluetooth.requestDevice({
-	  // acceptAllDevices: true,
-    filters: [
-	   {namePrefix: 'AB5'}
-	  ],
-	  optionalServices: [0xAA00 ]
-  }).then(device => {
-      log('"' + device.name + '" bluetooth device selected');
-	  devicename = device.name ;
-      deviceCache = device;
+    try {
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [
+                { namePrefix: 'AB5' }
+            ],
+            optionalServices: [SERVICES.MAIN, SERVICES.DEBUG]
+        });
+        
+        log('Выбрано устройство: "' + device.name + '"');
+        deviceCache = device;
+        deviceCache.addEventListener('gattserverdisconnected', handleDisconnection);
+        return deviceCache;
+    } catch (error) {
+        if (error.message === 'No devices found') {
+            throw new Error('Устройства не найдены');
+        }
+        throw error;
+    }
+}
 
-      // Добавленная строка
-      deviceCache.addEventListener('gattserverdisconnected', handleDisconnection);
+// Подключение к GATT серверу
+async function connectToDevice() {
+    if (deviceCache.gatt.connected) {
+        log('Уже подключены к GATT серверу');
+        return;
+    }
+    
+    log('Подключение к GATT серверу...');
+    try {
+        gattServer = await deviceCache.gatt.connect();
+        log('GATT сервер подключен', 'success');
+    } catch (error) {
+        throw new Error('Не удалось подключиться к GATT серверу: ' + error.message);
+    }
+}
 
-      return deviceCache;
-    });
+// Поиск всех сервисов и характеристик
+async function discoverServicesAndCharacteristics() {
+    if (!gattServer) {
+        throw new Error('Нет подключения к GATT серверу');
+    }
+    
+    log('Поиск доступных сервисов...');
+    
+    try {
+        // Получаем все сервисы
+        const services = await gattServer.getPrimaryServices();
+        log('Найдено сервисов: ' + services.length);
+        
+        // Выводим информацию о найденных сервисах
+        for (let service of services) {
+            const uuid = service.uuid;
+            log(`Сервис: ${uuid}`, 'info');
+            
+            // Получаем характеристики для каждого сервиса
+            try {
+                const characteristics = await service.getCharacteristics();
+                log(`  Найдено характеристик: ${characteristics.length}`, 'info');
+                
+                for (let char of characteristics) {
+                    log(`    Характеристика: ${char.uuid}`, 'info');
+                    
+                    // Сохраняем найденные характеристики
+                    if (!charArray) charArray = {};
+                    
+                    // Проверяем, является ли эта характеристика нужной нам
+                    const charUuid = char.uuid.toLowerCase();
+                    
+                    // AA01 (температура)
+                    if (charUuid.includes('aa01') || char.uuid === CHARACTERISTICS.TEMPERATURE) {
+                        charArray[CHARACTERISTICS.TEMPERATURE] = {
+                            characteristic: char,
+                            value: 0,
+                            data: 'int32'
+                        };
+                        log('    -> Найдена характеристика температуры (AA01)', 'success');
+                        
+                        // Включаем уведомления
+                        await setupNotifications(char);
+                    }
+                    // AA02 (START/STOP)
+                    else if (charUuid.includes('aa02') || char.uuid === CHARACTERISTICS.START_STOP) {
+                        charArray[CHARACTERISTICS.START_STOP] = {
+                            characteristic: char,
+                            value: 0,
+                            data: 'uint8'
+                        };
+                        log('    -> Найдена характеристика управления (AA02)', 'success');
+                    }
+                    // AA65 (режим)
+                    else if (charUuid.includes('aa65') || char.uuid === CHARACTERISTICS.MODE_SELECT) {
+                        modeSelectCharacteristic = char;
+                        log('    -> Найдена характеристика режима (AA65)', 'success');
+                    }
+                    // Debug Pipe
+                    else if (char.uuid === CHARACTERISTICS.DEBUG_PIPE) {
+                        debugPipeInOutCharacteristic = char;
+                        debugPipeInOutCharacteristic.addEventListener('characteristicvaluechanged', debugPipeInValueChanged);
+                        log('    -> Найдена Debug Pipe характеристика', 'success');
+                        
+                        // Пытаемся включить уведомления для Debug Pipe
+                        try {
+                            await debugPipeInOutCharacteristic.startNotifications();
+                            log('    -> Уведомления Debug Pipe включены', 'success');
+                        } catch (e) {
+                            log('    -> Не удалось включить уведомления Debug Pipe: ' + e.message, 'warning');
+                        }
+                    }
+                }
+            } catch (error) {
+                log(`  Ошибка при получении характеристик для сервиса ${uuid}: ${error.message}`, 'warning');
+            }
+        }
+        
+        // Проверяем, нашли ли мы необходимые характеристики
+        if (!charArray[CHARACTERISTICS.TEMPERATURE]) {
+            log('ВНИМАНИЕ: Характеристика температуры (AA01) не найдена', 'warning');
+        }
+        if (!charArray[CHARACTERISTICS.START_STOP]) {
+            log('ВНИМАНИЕ: Характеристика управления (AA02) не найдена', 'warning');
+        }
+        
+    } catch (error) {
+        throw new Error('Ошибка при поиске сервисов: ' + error.message);
+    }
+}
+
+// Настройка уведомлений для характеристики
+async function setupNotifications(characteristic) {
+    log('Настройка уведомлений для ' + characteristic.uuid + '...');
+    try {
+        await characteristic.startNotifications();
+        log('Уведомления включены', 'success');
+        characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
+    } catch (error) {
+        log('Не удалось включить уведомления: ' + error.message, 'warning');
+    }
 }
 
 // Обработчик разъединения
 function handleDisconnection(event) {
-  let device = event.target;
-
-  log('"' + device.name + '" bluetooth device disconnected, trying to reconnect...');
-
-  connectDeviceAndCacheCharacteristic(device)
-    .then(characteristic => startNotifications(characteristic))
-    .catch(error => log(error));
+    let device = event.target;
+    log('"' + device.name + '" отключен', 'warning');
+    
+    connectButton.disabled = false;
+    disconnectButton.disabled = true;
+    temperatureLabel.innerHTML = '...';
+    
+    // Очищаем кэш
+    charArray = null;
+    gattServer = null;
+    modeSelectCharacteristic = null;
+    debugPipeInOutCharacteristic = null;
+    
+    // Пытаемся переподключиться
+    log('Попытка переподключения...');
+    setTimeout(() => {
+        if (!deviceCache.gatt.connected) {
+            connect();
+        }
+    }, 2000);
 }
 
-// Кэш объекта характеристики
-let characteristicCache = null;
-let charArray = null;
-// let ioCharacteristicCache = null;
-let serviceInstance = null;
-
-function getPrimaryService(device) {
-  return serviceInstance
-    ? Promise.resolve(serviceInstance)
-    : device.gatt.connect()
-      .then(server => {
-        //log('GATT server connected, getting service...');
-        serviceInstance = server ;
-        return server.getPrimaryService(0xAA00);
-      });
+// Функция для преобразования байтов в int32 с big endian
+function bytesToInt32BigEndian(bytes) {
+    return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
 }
 
-function readCharacteristic(device, param) {
-  return getPrimaryService(device)
-    .then(service => {
-      return service.getCharacteristic(param);
-    });
+// Функция для преобразования байтов в int16 с big endian
+function bytesToInt16BigEndian(bytes) {
+    return (bytes[0] << 8) | bytes[1];
 }
 
-function showValues(device) {
-  var chars = [0xAA01, 0xAA02];
-  if (!charArray) {
-    for (var i in chars) {
-      readCharacteristic(device, chars[i])
-        .then(characteristic => {
-          if (!charArray) {
-            charArray = {};
-          }
-          var uuid = characteristic.uuid;
-          //if(uuid == '0000aa84-0000-1000-8000-00805f9b34fb') Promise.resolve(characteristic.readValue()) 
-			Promise.resolve(0)
-            .then(value => {
-              var _val;
-              var _dat;
-              switch(uuid) {
-                case '0000aa01-0000-1000-8000-00805f9b34fb':
-                  _val = 0 ; // value.getUint32(0);
-                  _dat = 'uint32';
-                  break;
-                case '0000aa02-0000-1000-8000-00805f9b34fb':
-                  _val = 0 ; // value.getUint8(0);
-                  $('#startBtn')
-                    .attr('data-uuid', uuid)
-                    .attr('data-value', 1);
-                  $('#stopBtn')
-                    .attr('data-uuid', uuid)
-                    .attr('data-value', 0);
-                  _dat = 'uint16';
-                  break;
-              }
-              charArray[uuid] = {
-                characteristic: characteristic,
-                value: _val,
-                data: _dat
-              };
-			  log(uuid + ': ' + _val);
-            });
-        });
+// Получение данных от характеристики (BIG ENDIAN)
+function handleCharacteristicValueChanged(event) {
+    try {
+        let value = event.target.value;
+        let bytes = new Uint8Array(value.buffer);
+        
+        // Выводим сырые данные для отладки
+        //let hexString = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+        //log(`Получены данные (${bytes.length} байт): ${hexString}`, 'debug');
+        
+        let temperature;
+        
+        if (bytes.length >= 4) {
+            // Читаем как int32 big endian
+            temperature = bytesToInt32BigEndian(bytes) / 100;
+            log(`Температура: ${temperature.toFixed(2)} °C`, 'in');
+            temperatureLabel.innerHTML = temperature.toFixed(2);
+        } else if (bytes.length === 2) {
+            // Читаем как int16 big endian
+            temperature = bytesToInt16BigEndian(bytes) / 100;
+            log(`Температура (int16 BE): ${temperature.toFixed(2)} °C`, 'in');
+            temperatureLabel.innerHTML = temperature.toFixed(2);
+        } else if (bytes.length === 1) {
+            // Если 1 байт
+            temperature = bytes[0];
+            log(`Температура (uint8): ${temperature} °C`, 'in');
+            temperatureLabel.innerHTML = temperature;
+        } else {
+            log(`Неизвестный формат данных (${bytes.length} байт)`, 'warning');
+            // Пробуем интерпретировать как float
+            if (bytes.length === 4) {
+                let view = new DataView(value.buffer);
+                let floatValue = view.getFloat32(0, false); // false = big endian
+                log(`Как float32 BE: ${floatValue}`, 'debug');
+            }
+        }
+        
+    } catch (error) {
+        log('Ошибка чтения данных: ' + error.message, 'error');
+        console.error(error);
     }
-  }
 }
 
-// Подключение к определенному устройству, получение сервиса и характеристики
-function connectDeviceAndCacheCharacteristic(device) {
-  if (device.gatt.connected && characteristicCache) {
-    return Promise.resolve(characteristicCache);
-  }
-
-  log('Connecting to GATT server...');
-
-  // return device.gatt.connect()
-  //   .then(server => {
-  //     log('GATT server connected, getting service...');
-  //     serviceInstance = server ;
-  //     return server.getPrimaryService(0xAA80);
-  //   })
-  return getPrimaryService(device)
-    .then(service => {
-      log('Service found, getting characteristic...');
-
-      return service.getCharacteristic(0xAA01);
-    })
-    .then(characteristic => {
-      log('Characteristic found');
-      characteristicCache = characteristic;
-
-      return characteristicCache;
-    });
+// Обработчик Debug Pipe
+function debugPipeInValueChanged(event) {
+    try {
+        let value = event.target.value;
+        let bytes = new Uint8Array(value.buffer);
+        
+        // Выводим сырые данные
+        let hexString = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+        log(`Debug Pipe (${bytes.length} байт): ${hexString}`, 'debug');
+        
+        // Пробуем декодировать как текст
+        try {
+            let text = new TextDecoder('utf-8').decode(bytes);
+            if (text.trim()) {
+                log(`Debug: ${text}`, 'debug');
+            }
+        } catch (e) {
+            // Игнорируем ошибки декодирования
+        }
+        
+    } catch (error) {
+        log('Ошибка Debug Pipe: ' + error.message, 'error');
+    }
 }
 
-// Включение получения уведомлений об изменении характеристики
-function startNotifications(characteristic) {
-  log('Starting notifications...');
-
-  return characteristic.startNotifications().
-      then(() => {
-        log('Notifications started');
-
-        // Добавленная строка
-        characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);	
-      });
+// Отключиться от устройства
+function disconnect() {
+    if (deviceCache) {
+        log('Отключение от "' + deviceCache.name + '"...');
+        deviceCache.removeEventListener('gattserverdisconnected', handleDisconnection);
+        
+        if (deviceCache.gatt.connected) {
+            deviceCache.gatt.disconnect();
+            log('Отключено', 'success');
+        }
+        
+        // Очищаем кэш
+        charArray = null;
+        gattServer = null;
+        modeSelectCharacteristic = null;
+        debugPipeInOutCharacteristic = null;
+        deviceCache = null;
+        
+        connectButton.disabled = false;
+        disconnectButton.disabled = true;
+        temperatureLabel.innerHTML = '...';
+    }
 }
 
 // Вывод в терминал
 function log(data, type = '') {
-  terminalContainer.insertAdjacentHTML('beforeEnd',
-      '<div' + (type ? ' class="' + type + '"' : '') + '>' + data + '</div>');
-  //terminalContainer.scrollTop = terminalContainer.scrollHeight;
-  //console.log(terminalContainer.scrollTop);
-  //console.log(terminalContainer.scrollHeight);
-}
-
-// Отключиться от подключенного устройства
-function disconnect() {
-  if (deviceCache) {
-    log('Disconnecting from "' + deviceCache.name + '" bluetooth device...');
-    deviceCache.removeEventListener('gattserverdisconnected',
-        handleDisconnection);
-
-    if (deviceCache.gatt.connected) {
-      deviceCache.gatt.disconnect();
-      log('"' + deviceCache.name + '" bluetooth device disconnected');
+    let color = '';
+    switch(type) {
+        case 'error':
+            color = '#f44336';
+            break;
+        case 'warning':
+            color = '#ff9800';
+            break;
+        case 'success':
+            color = '#4caf50';
+            break;
+        case 'in':
+            color = '#000000'; // черный '#2196f3'; синий
+            break;
+        case 'debug':
+            color = '#9c27b0';
+            break;
+        case 'info':
+            color = '#607d8b';
+            break;
+        default:
+            color = '#000000';
     }
-    else {
-      log('"' + deviceCache.name +
-          '" bluetooth device is already disconnected');
-    }
-  }
-
-  // Добавленное условие
-  if (characteristicCache) {
-    characteristicCache.removeEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
-    characteristicCache = null;
-  }
-
-  charArray = null;
-  serviceInstance = null;
-  deviceCache = null;
+    
+    const timestamp = new Date().toLocaleTimeString();
+    terminalContainer.insertAdjacentHTML('beforeEnd',
+        `<div style="color: ${color}; margin: 2px 0; font-family: monospace;">
+            [${timestamp}] ${data}
+        </div>`);
+    terminalContainer.scrollTop = terminalContainer.scrollHeight;
 }
-
-
-// Получение данных
-function handleCharacteristicValueChanged(event) {
-    log(event.target.value.getInt32(0)/100, 'in'); // (0, littleEndian)
-    temperatureLabel.innerHTML =  event.target.value.getInt32(0)/100 ;
-}
-
-function int16ToInt8Array(value) {
-    // we want to represent the input as a 8-bytes array
-    var byteArray = [(value >> 8) & 0xFF, value & 0xFF];
-
-    // for (var index = 0; index < byteArray.length; index++) {
-      // var byte = value & 0xff;
-      // byteArray[index] = byte;
-      // value = (value - byte) / 256;
-    // }
-
-    return new Int8Array(byteArray);
-};
-
-// Отправить данные подключенному устройству
-function send() {
-  var uuid = $('#input').attr('data-uuid');
-  var value = $('#input').val();
-  var characteristic = charArray[uuid].characteristic;
-  var converted = int16ToInt8Array(value);
-  characteristic.writeValue(converted);
-}
-
