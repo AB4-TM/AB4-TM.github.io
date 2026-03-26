@@ -7,6 +7,11 @@ let stopButton = document.getElementById('stopBtn');
 let clearButton = document.getElementById('clrBtn');
 let temperatureLabel = document.getElementById('temperature');
 
+// Новые элементы для калибровки
+let tableReadButton = document.getElementById('tableRead');
+let tableWriteButton = document.getElementById('tableWrite');
+let tableArea = document.getElementById('tableCorrection');
+
 // Кэш объектов
 let deviceCache = null;
 let charArray = null;
@@ -26,6 +31,117 @@ const CHARACTERISTICS = {
     MODE_SELECT: 0xAA65,
     DEBUG_PIPE: 'f000deb1-0451-4000-b000-000000000000'
 };
+
+// Константы для калибровки
+const COMM_TYPE_KALIBR_DATA = 20;
+const CMD_GET_KALIBR_DATA = 0x10;
+const CMD_SET_KALIBR_DATA = 0x0F;
+
+// Вспомогательная функция для задержки
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Функция для преобразования строки в hex байты (для отладки)
+function toHexString(byteArray) {
+    return Array.from(byteArray, function(byte) {
+        return ('0' + (byte & 0xFF).toString(16)).slice(-2);
+    }).join(' ');
+}
+
+// Функция для преобразования int16 из байтов (little endian)
+function bytesToInt16(bytes, offset = 0) {
+    let value = (bytes[offset + 1] << 8) | bytes[offset];
+    // Преобразование в знаковое значение
+    if (value & 0x8000) {
+        value = value - 0x10000;
+    }
+    return value;
+}
+
+// Функция для преобразования int16 в байты (little endian)
+function int16ToBytes(value) {
+    let bytes = new Uint8Array(2);
+    if (value < 0) {
+        value = 0x10000 + value; // Преобразование в дополнительный код
+    }
+    bytes[0] = value & 0xFF;
+    bytes[1] = (value >> 8) & 0xFF;
+    return bytes;
+}
+
+// при нажатии на кнопку tableRead - чтение таблицы калибровки
+tableReadButton.addEventListener('click', function() {
+    if (!debugPipeInOutCharacteristic) {
+        log('Сначала подключитесь к устройству', 'error');
+        return;
+    }
+    
+    log('Запрос таблицы калибровки...');
+    tableArea.value = '';
+    // Отправляем команду на чтение таблицы
+    debugPipeInOutCharacteristic.writeValue(new Uint8Array([CMD_GET_KALIBR_DATA, 0]))
+        .then(() => log('Команда на чтение таблицы отправлена', 'success'))
+        .catch(error => log('Ошибка чтения таблицы: ' + error, 'error'));
+});
+
+// при нажатии на кнопку tableWrite - запись таблицы калибровки
+tableWriteButton.addEventListener('click', async function() {
+    if (!debugPipeInOutCharacteristic) {
+        log('Сначала подключитесь к устройству', 'error');
+        return;
+    }
+    
+    log('Запись таблицы калибровки...');
+    
+    var lines = tableArea.value.split('\n');
+    for(var i = 0; i < lines.length; i++) {
+        if(lines[i].length > 0) {
+            console.log("send " + lines[i]);
+            var curr_line = lines[i].split(',');
+            console.log(curr_line);
+            
+            try {
+                if(curr_line.length < 3) {
+                    // Строка с количеством записей
+                    var _count = parseInt(curr_line[0]);
+                    if (!isNaN(_count)) {
+                        await debugPipeInOutCharacteristic.writeValue(
+                            new Uint8Array([CMD_SET_KALIBR_DATA, 0xFF, _count & 0xFF, (_count >> 8) & 0xFF])
+                        );
+                        log(`Отправлено количество: ${_count}`, 'success');
+                    }
+                } else if(curr_line.length >= 3) {
+                    // Строка с данными: индекс, температура, значение
+                    var _index = parseInt(curr_line[0]);
+                    var _temperature = parseFloat(curr_line[1]); // Температура со знаком
+                    var _att_value = parseInt(curr_line[2]);
+                    
+                    if (!isNaN(_index) && !isNaN(_temperature) && !isNaN(_att_value)) {
+                        let tempInt = Math.round(_temperature);
+                        let tempBytes = int16ToBytes(tempInt);
+                        
+                        await debugPipeInOutCharacteristic.writeValue(
+                            new Uint8Array([
+                                CMD_SET_KALIBR_DATA, 
+                                _index & 0xFF, 
+                                tempBytes[0],      // Младший байт температуры
+                                tempBytes[1],      // Старший байт температуры
+                                _att_value & 0xFF, 
+                                (_att_value >> 8) & 0xFF
+                            ])
+                        );
+                        log(`Отправлена запись ${_index}: температура ${_temperature.toFixed(2)}°C -> значение ${_att_value}`, 'success');
+                    }
+                }
+                await sleep(100); // Небольшая задержка между отправками
+            } catch (error) {
+                log(`Ошибка при записи строки ${i+1}: ${error.message}`, 'error');
+            }
+        }
+    }
+    log('Запись таблицы завершена', 'success');
+});
 
 // при нажатии на кнопку START
 startButton.addEventListener('click', function() {
@@ -65,8 +181,9 @@ stopButton.addEventListener('click', function() {
 
 // при нажатии на кнопку CLEAR
 clearButton.addEventListener('click', function() {
-    terminalContainer.innerHTML = '<div>Версия V0.0.11</div>';
-    log('Терминал очищен');
+    terminalContainer.innerHTML = '<div>Версия V0.0.12</div>';
+    tableArea.value = '';
+    log('Терминал и таблица очищены');
 });
 
 // Подключение к устройству
@@ -90,12 +207,32 @@ async function connect() {
         await requestBluetoothDevice();
         await connectToDevice();
         await discoverServicesAndCharacteristics();
+        
+        // Отправка установки modeSelectCharacteristic после успешного подключения
+        await setModeSelectCharacteristic();
+        
         log('Подключение успешно завершено', 'success');
         connectButton.disabled = true;
         disconnectButton.disabled = false;
     } catch (error) {
         log('Ошибка подключения: ' + error.message, 'error');
         console.error(error);
+    }
+}
+
+// Функция для установки modeSelectCharacteristic
+async function setModeSelectCharacteristic() {
+    if (modeSelectCharacteristic) {
+        try {
+            log('Установка режима работы устройства...');
+            let modeValue = new Uint8Array([0x02]);
+            await modeSelectCharacteristic.writeValue(modeValue);
+            log('Режим работы успешно установлен', 'success');
+        } catch (error) {
+            log('Ошибка установки режима: ' + error.message, 'error');
+        }
+    } else {
+        log('Характеристика режима (MODE_SELECT) не найдена', 'warning');
     }
 }
 
@@ -282,10 +419,6 @@ function handleCharacteristicValueChanged(event) {
         let value = event.target.value;
         let bytes = new Uint8Array(value.buffer);
         
-        // Выводим сырые данные для отладки
-        //let hexString = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
-        //log(`Получены данные (${bytes.length} байт): ${hexString}`, 'debug');
-        
         let temperature;
         
         if (bytes.length >= 4) {
@@ -305,12 +438,6 @@ function handleCharacteristicValueChanged(event) {
             temperatureLabel.innerHTML = temperature;
         } else {
             log(`Неизвестный формат данных (${bytes.length} байт)`, 'warning');
-            // Пробуем интерпретировать как float
-            if (bytes.length === 4) {
-                let view = new DataView(value.buffer);
-                let floatValue = view.getFloat32(0, false); // false = big endian
-                log(`Как float32 BE: ${floatValue}`, 'debug');
-            }
         }
         
     } catch (error) {
@@ -319,17 +446,42 @@ function handleCharacteristicValueChanged(event) {
     }
 }
 
-// Обработчик Debug Pipe
+// Обработчик Debug Pipe (расширен для поддержки калибровки)
 function debugPipeInValueChanged(event) {
     try {
         let value = event.target.value;
         let bytes = new Uint8Array(value.buffer);
         
-        // Выводим сырые данные
+        // Выводим сырые данные для отладки
         let hexString = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
         log(`Debug Pipe (${bytes.length} байт): ${hexString}`, 'debug');
         
-        // Пробуем декодировать как текст
+        // Проверяем, являются ли данные калибровочными
+        if (bytes.length >= 1 && bytes[0] === COMM_TYPE_KALIBR_DATA) {
+            log('Получены калибровочные данные', 'info');
+            
+            if (bytes.length >= 4) {
+                // Приём таблицы коэффициентов
+                if (bytes[1] === 0xFF) {
+                    // Количество записей
+                    let count = (bytes[3] << 8) + bytes[2];
+                    tableArea.value += count + '\r\n';
+                    log(`Количество записей в таблице: ${count}`, 'success');
+                } else {
+                    // Данные записи: индекс, температура, значение
+                    let index = bytes[1];
+                    // Читаем температуру как int16 (little endian)
+                    let tempRaw = bytesToInt16(bytes, 2);
+                    let temperature = tempRaw / 1.0; // Делаем обратное преобразование
+                    let attValue = (bytes[5] << 8) + bytes[4];
+                    tableArea.value += index + ',\t' + temperature.toFixed(2) + ',\t' + attValue + '\r\n';
+                    log(`Запись ${index}: температура ${temperature.toFixed(2)}°C, значение ${attValue}`, 'info');
+                }
+            }
+            return; // Не пытаемся декодировать как текст
+        }
+        
+        // Пробуем декодировать как текст (для обычных debug сообщений)
         try {
             let text = new TextDecoder('utf-8').decode(bytes);
             if (text.trim()) {
@@ -365,6 +517,7 @@ function disconnect() {
         connectButton.disabled = false;
         disconnectButton.disabled = true;
         temperatureLabel.innerHTML = '...';
+        tableArea.value = '';
     }
 }
 
