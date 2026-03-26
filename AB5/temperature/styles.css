@@ -141,3 +141,35 @@ div {
   -o-transform: rotate(-90deg);
   -ms-transform: rotate(-90deg);
 }
+
+#terminal {
+    background-color: #f5f5f5;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 10px;
+    margin-top: 20px;
+    height: 300px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 14px;
+    scroll-behavior: smooth;
+}
+
+/* Стиль для полосы прокрутки */
+#terminal::-webkit-scrollbar {
+    width: 8px;
+}
+
+#terminal::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+#terminal::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+#terminal::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}

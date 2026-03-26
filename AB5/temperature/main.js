@@ -382,7 +382,7 @@ function log(data, type = '') {
             color = '#4caf50';
             break;
         case 'in':
-            color = '#000000'; // черный '#2196f3'; синий
+            color = '#000000';
             break;
         case 'debug':
             color = '#9c27b0';
@@ -399,5 +399,9 @@ function log(data, type = '') {
         `<div style="color: ${color}; margin: 2px 0; font-family: monospace;">
             [${timestamp}] ${data}
         </div>`);
-    terminalContainer.scrollTop = terminalContainer.scrollHeight;
+    
+    // Автоматическая прокрутка вниз
+    requestAnimationFrame(() => {
+        terminalContainer.scrollTop = terminalContainer.scrollHeight;
+    });
 }
