@@ -12,6 +12,18 @@ let tableReadButton = document.getElementById('tableRead');
 let tableWriteButton = document.getElementById('tableWrite');
 let tableArea = document.getElementById('tableCorrection');
 
+// Кнопки AUTO
+let auto10Button = document.getElementById('AUTO_10');
+let auto100Button = document.getElementById('AUTO_100');
+let auto200Button = document.getElementById('AUTO_200');
+let auto300Button = document.getElementById('AUTO_300');
+let auto400Button = document.getElementById('AUTO_400');
+let auto440Button = document.getElementById('AUTO_440');
+
+// Элементы для произвольной температуры
+let customTempInput = document.getElementById('customTemp');
+let sendCustomTempButton = document.getElementById('sendCustomTemp');
+
 // Кэш объектов
 let deviceCache = null;
 let charArray = null;
@@ -32,10 +44,15 @@ const CHARACTERISTICS = {
     DEBUG_PIPE: 'f000deb1-0451-4000-b000-000000000000'
 };
 
+// Диапазон допустимых температур
+const TEMP_MIN = -10;
+const TEMP_MAX = 500;
+
 // Константы для калибровки
 const COMM_TYPE_KALIBR_DATA = 20;
-const CMD_GET_KALIBR_DATA = 0x10;
 const CMD_SET_KALIBR_DATA = 0x0F;
+const CMD_GET_KALIBR_DATA = 0x10;
+const CMD_SET_KALIBR_MODE = 0x0D;
 
 // Вспомогательная функция для задержки
 function sleep(ms) {
@@ -69,6 +86,98 @@ function int16ToBytes(value) {
     bytes[1] = (value >> 8) & 0xFF;
     return bytes;
 }
+
+// Функция для преобразования int16 в байты (big endian)
+function int16ToBytesBE(value) {
+    let bytes = new Uint8Array(2);
+    if (value < 0) {
+        value = 0x10000 + value;
+    }
+    bytes[0] = (value >> 8) & 0xFF;
+    bytes[1] = value & 0xFF;
+    return bytes;
+}
+
+// Функция для отправки AUTO команды
+async function sendAutoCommand(temperature) {
+    if (!debugPipeInOutCharacteristic) {
+        log('Сначала подключитесь к устройству', 'error');
+        return;
+    }
+    
+    log(`Отправка AUTO команды с температурой: ${temperature}°C`);
+    
+    try {
+        // Преобразуем температуру в int16 (little endian)
+        let tempInt = Math.round(temperature);
+        let tempBytes = int16ToBytes(tempInt);
+        
+        // Формируем пакет: [CMD, 0, tempLow, tempHigh]
+        let packet = new Uint8Array([
+            CMD_SET_KALIBR_MODE,
+            tempBytes[0],  // Младший байт температуры
+            tempBytes[1]   // Старший байт температуры
+        ]);
+        
+        log(`Отправка пакета: ${toHexString(packet)}`, 'debug');
+        
+        await debugPipeInOutCharacteristic.writeValue(packet);
+        log(`AUTO команда с температурой ${temperature}°C успешно отправлена`, 'success');
+    } catch (error) {
+        log(`Ошибка отправки AUTO команды: ${error.message}`, 'error');
+    }
+}
+
+// Обработчик для отправки произвольной температуры
+sendCustomTempButton.addEventListener('click', function() {
+    let tempValue = parseFloat(customTempInput.value);
+    
+    if (isNaN(tempValue)) {
+        log('Введите корректное числовое значение температуры', 'error');
+        return;
+    }
+    
+    sendAutoCommand(tempValue);
+});
+
+// Ограничение ввода в поле температуры
+customTempInput.addEventListener('change', function() {
+    let value = parseFloat(this.value);
+    if (!isNaN(value)) {
+        if (value < TEMP_MIN) {
+            this.value = TEMP_MIN;
+            log(`Температура скорректирована до минимального значения ${TEMP_MIN}°C`, 'warning');
+        } else if (value > TEMP_MAX) {
+            this.value = TEMP_MAX;
+            log(`Температура скорректирована до максимального значения ${TEMP_MAX}°C`, 'warning');
+        }
+    }
+});
+
+// Обработчики для кнопок AUTO
+auto10Button.addEventListener('click', function() {
+    sendAutoCommand(10);
+});
+
+auto100Button.addEventListener('click', function() {
+    sendAutoCommand(100);
+});
+
+auto200Button.addEventListener('click', function() {
+    sendAutoCommand(200);
+});
+
+auto300Button.addEventListener('click', function() {
+    sendAutoCommand(300);
+});
+
+auto400Button.addEventListener('click', function() {
+    sendAutoCommand(400);
+});
+
+auto440Button.addEventListener('click', function() {
+    sendAutoCommand(440);
+});
 
 // при нажатии на кнопку tableRead - чтение таблицы калибровки
 tableReadButton.addEventListener('click', function() {
@@ -479,6 +588,16 @@ function debugPipeInValueChanged(event) {
                 }
             }
             return; // Не пытаемся декодировать как текст
+        }
+        
+        // Проверяем ответ на AUTO команду
+        if (bytes.length >= 1 && bytes[0] === CMD_SET_KALIBR_MODE) {
+            if (bytes[1] === 0x00) {
+                log('AUTO команда успешно принята устройством', 'success');
+            } else if (bytes[1] === 0xFF) {
+                log('Ошибка выполнения AUTO команды', 'error');
+            }
+            return;
         }
         
         // Пробуем декодировать как текст (для обычных debug сообщений)
