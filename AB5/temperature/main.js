@@ -1,6 +1,7 @@
 // Получение ссылок на элементы UI
 let connectButton = document.getElementById('connect');
 let disconnectButton = document.getElementById('disconnect');
+let refreshServicesButton = document.getElementById('refreshServices');
 let terminalContainer = document.getElementById('terminal');
 let startButton = document.getElementById('startBtn');
 let stopButton = document.getElementById('stopBtn');
@@ -31,10 +32,15 @@ let gattServer = null;
 let modeSelectCharacteristic = null;
 let debugPipeInOutCharacteristic = null;
 
+// Флаг, указывающий, что идет процесс обновления сервисов
+let isRefreshingServices = false;
+
 // UUID сервисов и характеристик
 const SERVICES = {
     MAIN: 0xAA80,
-    DEBUG: 'f000deb0-0451-4000-b000-000000000000'
+    DEBUG: 'f000deb0-0451-4000-b000-000000000000',
+    TEMP_SERVICE: '0000aa00-0000-1000-8000-00805f9b34fb',
+    MODE_SERVICE: '0000aa64-0000-1000-8000-00805f9b34fb'
 };
 
 const CHARACTERISTICS = {
@@ -290,7 +296,7 @@ stopButton.addEventListener('click', function() {
 
 // при нажатии на кнопку CLEAR
 clearButton.addEventListener('click', function() {
-    terminalContainer.innerHTML = '<div>Версия V0.0.12</div>';
+    terminalContainer.innerHTML = '<div>Версия V0.0.13</div>';
     tableArea.value = '';
     log('Терминал и таблица очищены');
 });
@@ -305,6 +311,86 @@ disconnectButton.addEventListener('click', function() {
     disconnect();
 });
 
+// Кнопка обновления сервисов
+refreshServicesButton.addEventListener('click', async function() {
+    if (!deviceCache || !deviceCache.gatt.connected) {
+        log('Сначала подключитесь к устройству', 'error');
+        return;
+    }
+    
+    if (isRefreshingServices) {
+        log('Обновление сервисов уже выполняется...', 'warning');
+        return;
+    }
+    
+    log('========================================', 'info');
+    log('Начало принудительного обновления сервисов...', 'info');
+    log('========================================', 'info');
+    
+    isRefreshingServices = true;
+    refreshServicesButton.disabled = true;
+    
+    try {
+        // Очищаем кэш характеристик
+        charArray = null;
+        modeSelectCharacteristic = null;
+        
+        // Отключаем уведомления от старых характеристик, если были
+        if (debugPipeInOutCharacteristic) {
+            try {
+                await debugPipeInOutCharacteristic.stopNotifications();
+            } catch (e) {
+                // игнорируем
+            }
+        }
+        
+        // Принудительно обновляем GATT сервер
+        // Способ 1: переподключаемся к GATT серверу
+        log('Переподключение к GATT серверу...', 'info');
+        
+        // Сохраняем текущее устройство
+        const currentDevice = deviceCache;
+        
+        // Отключаемся от GATT (но не от устройства полностью)
+        if (currentDevice.gatt.connected) {
+            await currentDevice.gatt.disconnect();
+            log('GATT сервер отключен', 'info');
+            await sleep(500);
+        }
+        
+        // Подключаемся заново
+        gattServer = await currentDevice.gatt.connect();
+        log('GATT сервер переподключен', 'success');
+        await sleep(500);
+        
+        // Повторно ищем сервисы и характеристики
+        await discoverServicesAndCharacteristics();
+        
+        // Проверяем результат
+        let hasTemp = charArray && charArray[CHARACTERISTICS.TEMPERATURE];
+        let hasStartStop = charArray && charArray[CHARACTERISTICS.START_STOP];
+        let hasMode = modeSelectCharacteristic !== null;
+        
+        log('========================================', 'info');
+        log('Результат обновления сервисов:', 'info');
+        log(`  - Характеристика температуры (AA01): ${hasTemp ? '✅ НАЙДЕНА' : '❌ НЕ НАЙДЕНА'}`, hasTemp ? 'success' : 'error');
+        log(`  - Характеристика управления (AA02): ${hasStartStop ? '✅ НАЙДЕНА' : '❌ НЕ НАЙДЕНА'}`, hasStartStop ? 'success' : 'error');
+        log(`  - Характеристика режима (AA65): ${hasMode ? '✅ НАЙДЕНА' : '❌ НЕ НАЙДЕНА'}`, hasMode ? 'success' : 'error');
+        log('========================================', 'info');
+        
+        if (!hasTemp || !hasStartStop || !hasMode) {
+            log('Совет: попробуйте нажать кнопку "Disconnect", а затем "Connect" заново', 'warning');
+        }
+        
+    } catch (error) {
+        log(`Ошибка при обновлении сервисов: ${error.message}`, 'error');
+        console.error(error);
+    } finally {
+        isRefreshingServices = false;
+        refreshServicesButton.disabled = false;
+    }
+});
+
 // Запустить выбор Bluetooth устройства и подключиться
 async function connect() {
     if (deviceCache && deviceCache.gatt.connected) {
@@ -315,6 +401,7 @@ async function connect() {
     try {
         await requestBluetoothDevice();
         await connectToDevice();
+        await sleep(500); // Даем устройству время на инициализацию
         await discoverServicesAndCharacteristics();
         
         // Отправка установки modeSelectCharacteristic после успешного подключения
@@ -323,6 +410,7 @@ async function connect() {
         log('Подключение успешно завершено', 'success');
         connectButton.disabled = true;
         disconnectButton.disabled = false;
+        refreshServicesButton.disabled = false;
     } catch (error) {
         log('Ошибка подключения: ' + error.message, 'error');
         console.error(error);
@@ -354,7 +442,7 @@ async function requestBluetoothDevice() {
             filters: [
                 { namePrefix: 'AB5' }
             ],
-            optionalServices: [SERVICES.MAIN, SERVICES.DEBUG]
+            optionalServices: [SERVICES.MAIN, SERVICES.DEBUG, SERVICES.TEMP_SERVICE, SERVICES.MODE_SERVICE]
         });
         
         log('Выбрано устройство: "' + device.name + '"');
@@ -409,16 +497,16 @@ async function discoverServicesAndCharacteristics() {
                 log(`  Найдено характеристик: ${characteristics.length}`, 'info');
                 
                 for (let char of characteristics) {
+                    const charUuid = char.uuid.toLowerCase();
                     log(`    Характеристика: ${char.uuid}`, 'info');
                     
                     // Сохраняем найденные характеристики
                     if (!charArray) charArray = {};
                     
-                    // Проверяем, является ли эта характеристика нужной нам
-                    const charUuid = char.uuid.toLowerCase();
-                    
-                    // AA01 (температура)
-                    if (charUuid.includes('aa01') || char.uuid === CHARACTERISTICS.TEMPERATURE) {
+                    // Проверяем UUID как строку
+                    // Характеристика температуры: ищем 0000aa01-... или просто aa01 в конце
+                    if (charUuid === '0000aa01-0000-1000-8000-00805f9b34fb' || 
+                        charUuid.endsWith('aa01')) {
                         charArray[CHARACTERISTICS.TEMPERATURE] = {
                             characteristic: char,
                             value: 0,
@@ -429,8 +517,9 @@ async function discoverServicesAndCharacteristics() {
                         // Включаем уведомления
                         await setupNotifications(char);
                     }
-                    // AA02 (START/STOP)
-                    else if (charUuid.includes('aa02') || char.uuid === CHARACTERISTICS.START_STOP) {
+                    // Характеристика START/STOP: ищем 0000aa02-...
+                    else if (charUuid === '0000aa02-0000-1000-8000-00805f9b34fb' || 
+                             charUuid.endsWith('aa02')) {
                         charArray[CHARACTERISTICS.START_STOP] = {
                             characteristic: char,
                             value: 0,
@@ -438,13 +527,14 @@ async function discoverServicesAndCharacteristics() {
                         };
                         log('    -> Найдена характеристика управления (AA02)', 'success');
                     }
-                    // AA65 (режим)
-                    else if (charUuid.includes('aa65') || char.uuid === CHARACTERISTICS.MODE_SELECT) {
+                    // Характеристика режима MODE_SELECT: ищем 0000aa65-...
+                    else if (charUuid === '0000aa65-0000-1000-8000-00805f9b34fb' || 
+                             charUuid.endsWith('aa65')) {
                         modeSelectCharacteristic = char;
                         log('    -> Найдена характеристика режима (AA65)', 'success');
                     }
-                    // Debug Pipe
-                    else if (char.uuid === CHARACTERISTICS.DEBUG_PIPE) {
+                    // Debug Pipe: ищем f000deb1-...
+                    else if (charUuid === CHARACTERISTICS.DEBUG_PIPE.toLowerCase()) {
                         debugPipeInOutCharacteristic = char;
                         debugPipeInOutCharacteristic.addEventListener('characteristicvaluechanged', debugPipeInValueChanged);
                         log('    -> Найдена Debug Pipe характеристика', 'success');
@@ -464,11 +554,14 @@ async function discoverServicesAndCharacteristics() {
         }
         
         // Проверяем, нашли ли мы необходимые характеристики
-        if (!charArray[CHARACTERISTICS.TEMPERATURE]) {
+        if (!charArray || !charArray[CHARACTERISTICS.TEMPERATURE]) {
             log('ВНИМАНИЕ: Характеристика температуры (AA01) не найдена', 'warning');
         }
-        if (!charArray[CHARACTERISTICS.START_STOP]) {
+        if (!charArray || !charArray[CHARACTERISTICS.START_STOP]) {
             log('ВНИМАНИЕ: Характеристика управления (AA02) не найдена', 'warning');
+        }
+        if (!modeSelectCharacteristic) {
+            log('ВНИМАНИЕ: Характеристика режима (AA65) не найдена', 'warning');
         }
         
     } catch (error) {
@@ -495,6 +588,7 @@ function handleDisconnection(event) {
     
     connectButton.disabled = false;
     disconnectButton.disabled = true;
+    refreshServicesButton.disabled = true;
     temperatureLabel.innerHTML = '...';
     
     // Очищаем кэш
@@ -635,6 +729,7 @@ function disconnect() {
         
         connectButton.disabled = false;
         disconnectButton.disabled = true;
+        refreshServicesButton.disabled = true;
         temperatureLabel.innerHTML = '...';
         tableArea.value = '';
     }
