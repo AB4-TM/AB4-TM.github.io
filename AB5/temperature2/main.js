@@ -263,7 +263,7 @@ tableDefaultButton.addEventListener('click', function() {
     tableArea.value = 
 `10
 0,	-20.00,	10000
-1,	4.00,	25000
+1,	4.00,	20000
 2,	20.00,	10000
 3,	98.00,	10200
 4,	193.00,	10470
