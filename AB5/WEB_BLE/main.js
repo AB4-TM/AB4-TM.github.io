@@ -89,16 +89,12 @@ tableReadButton.addEventListener('click', function() {
 
 
 function sleep(milliseconds) {
-  const date = Date.now();
-  let currentDate = null;
-  do {
-    currentDate = Date.now();
-  } while (currentDate - date < milliseconds);
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
 
 // при нажатии на кнопку tableWrite
-tableWriteButton.addEventListener('click', function() {
+tableWriteButton.addEventListener('click', async function() {
   log('table write');
   
   var lines = tableArea.value.split('\n');
@@ -109,15 +105,15 @@ tableWriteButton.addEventListener('click', function() {
 		console.log(curr_line) ;
 		if(curr_line.length < 3) { // количество
 		 var _count = parseInt(curr_line[0]);
-         debugPipeInOutCharacteristic.writeValue(new Uint8Array([CMD_SET_KALIBR_DATA, 0xFF, _count, (_count >> 8)]));
+         await debugPipeInOutCharacteristic.writeValue(new Uint8Array([CMD_SET_KALIBR_DATA, 0xFF, _count, (_count >> 8)]));
 		} else 
 		if(curr_line.length == 3) { // значения
 		 var _index = parseInt(curr_line[0]);
 		 var _freq = parseInt(curr_line[1]);
 		 var _att_value = parseInt(curr_line[2]);
-         debugPipeInOutCharacteristic.writeValue(new Uint8Array([CMD_SET_KALIBR_DATA, _index, _freq, (_freq >> 8), _att_value, (_att_value >> 8)]));
+         await debugPipeInOutCharacteristic.writeValue(new Uint8Array([CMD_SET_KALIBR_DATA, _index, _freq, (_freq >> 8), _att_value, (_att_value >> 8)]));
 		}
-		sleep(100);
+		await sleep(100);
 	}
   }
 });
@@ -188,7 +184,7 @@ function writeToCharacteristic(characteristic, data) {
 
 // Подключение к устройству при нажатии на кнопку Connect
 connectButton.addEventListener('click', function() {
-  connect();
+  connect().catch(() => {});
 });
 
 // Отключение от устройства при нажатии на кнопку Disconnect
@@ -215,18 +211,56 @@ let coefficientValueCharacteristic = null;
 let fftCharacteristic = null;
 
 
-// Запустить выбор Bluetooth устройства и подключиться к выбранному
-function connect() {
-  var _dev = (deviceCache ? Promise.resolve(deviceCache) : requestBluetoothDevice());
-  _dev.then(device => showValues(device));
-  return _dev
-    .then(device => connectDeviceAndCacheCharacteristic(device))
-    .then(characteristic => startNotifications(characteristic))
-	.then(_ => {
-    log('Readingcoefficient ...');
-    return coefficientValueCharacteristic.readValue();
-  })
-    .catch(error => log(error));
+let gattServer = null;
+let connectionPromise = null;
+let reconnectTimer = null;
+let manualDisconnect = false;
+
+// Все GATT-операции выполняются последовательно. Параллельные запросы часто
+// приводят к разрыву соединения, особенно на Android.
+async function connect() {
+  if (connectionPromise) return connectionPromise;
+  if (deviceCache && deviceCache.gatt.connected && characteristicCache) {
+    log('Bluetooth device is already connected');
+    return characteristicCache;
+  }
+
+  manualDisconnect = false;
+  connectButton.disabled = true;
+  connectionPromise = connectSequence();
+
+  try {
+    return await connectionPromise;
+  } catch (error) {
+    log('Connection error: ' + (error.message || error), 'error');
+    clearGattCache();
+    connectButton.disabled = false;
+    disconnectButton.disabled = true;
+    scheduleReconnect();
+    throw error;
+  } finally {
+    connectionPromise = null;
+  }
+}
+
+async function connectSequence() {
+  const device = deviceCache || await requestBluetoothDevice();
+  log('Connecting to GATT server...');
+  gattServer = await device.gatt.connect();
+  log('GATT server connected');
+
+  await discoverCharacteristics();
+  await startNotifications(characteristicCache);
+
+  if (coefficientValueCharacteristic) {
+    log('Reading coefficient...');
+    await coefficientValueCharacteristic.readValue();
+  }
+
+  connectButton.disabled = true;
+  disconnectButton.disabled = false;
+  log('Bluetooth connection is ready');
+  return characteristicCache;
 }
 
 // Запрос выбора Bluetooth устройства
@@ -256,54 +290,44 @@ function requestBluetoothDevice() {
 function handleDisconnection(event) {
   let device = event.target;
 
-  log('"' + device.name + '" bluetooth device disconnected, trying to reconnect...');
+  clearGattCache();
+  connectButton.disabled = false;
+  disconnectButton.disabled = true;
+  log('"' + device.name + '" bluetooth device disconnected');
 
-  connectDeviceAndCacheCharacteristic(device)
-    .then(characteristic => startNotifications(characteristic))
-    .catch(error => log(error));
+  scheduleReconnect();
+}
+
+function scheduleReconnect() {
+  if (manualDisconnect || !deviceCache) return;
+  log('Trying to reconnect in 2 seconds...');
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    if (deviceCache && !deviceCache.gatt.connected) connect().catch(() => {});
+  }, 2000);
 }
 
 // Кэш объекта характеристики
 let characteristicCache = null;
 let charArray = null;
 // let ioCharacteristicCache = null;
-let serviceInstance = null;
+async function discoverCharacteristics() {
+  charArray = {};
+  const services = [
+    { uuid: 0xAA80, chars: [0xAA81, 0xAA82, 0xAA84, 0xAA85] },
+    { uuid: 'f000deb0-0451-4000-b000-000000000000', chars: ['f000deb1-0451-4000-b000-000000000000'] }
+  ];
 
-function getPrimaryService(device, param) {
-  return serviceInstance
-    ? Promise.resolve(serviceInstance)
-    : device.gatt.connect()
-      .then(server => {
-        log('GATT server connected, getting service...' + device + " " + param);
-        serviceInstance = server ;
-        if(param <= 0xAA85) {
-            return server.getPrimaryService(0xAA80);
-        } else {
-            return server.getPrimaryService('f000deb0-0451-4000-b000-000000000000');
-        }
-      });
-}
-
-function readCharacteristic(device, param) {
-//  log(device + ':: ' + param);
-  return getPrimaryService(device, param)
-    .then(service => {
-      return service.getCharacteristic(param);
-    });
-}
-
-function showValues(device) {
-  var chars = ['f000deb1-0451-4000-b000-000000000000', 0xAA81, 0xAA82, 0xAA84, 0xAA85 ];
-  if (!charArray) {
-    for (var i in chars) {
-      readCharacteristic(device, chars[i])
-        .then(characteristic => {
+  for (const serviceInfo of services) {
+    const service = await gattServer.getPrimaryService(serviceInfo.uuid);
+    for (const charUuid of serviceInfo.chars) {
+      const characteristic = await service.getCharacteristic(charUuid);
           if (!charArray) {
             charArray = {};
           }
           var uuid = characteristic.uuid;
           //if(uuid == '0000aa84-0000-1000-8000-00805f9b34fb') Promise.resolve(characteristic.readValue()) 
-			Promise.resolve(0)
+          await Promise.resolve(0)
             .then(value => {
               var _val;
               var _dat;
@@ -360,63 +384,34 @@ function showValues(device) {
               };
 			  log(uuid + ': ' + _val);
             });
-        });
     }
+  }
+
+  characteristicCache = charArray['0000aa81-0000-1000-8000-00805f9b34fb']?.characteristic || null;
+  if (!characteristicCache) {
+    throw new Error('Required characteristic AA81 was not found');
   }
 }
 
-// Подключение к определенному устройству, получение сервиса и характеристики
-function connectDeviceAndCacheCharacteristic(device) {
-  if (device.gatt.connected && characteristicCache) {
-    return Promise.resolve(characteristicCache);
+function clearGattCache() {
+  if (characteristicCache) {
+    characteristicCache.removeEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
   }
-
-  log('Connecting to GATT server...');
-
-  // return device.gatt.connect()
-  //   .then(server => {
-  //     log('GATT server connected, getting service...');
-  //     serviceInstance = server ;
-  //     return server.getPrimaryService(0xAA80);
-  //   })
-  return getPrimaryService(device, 0xAA81)
-    .then(service => {
-      log('Service found, getting characteristic...');
-
-      return service.getCharacteristic(0xAA81);
-    })
-    .then(characteristic => {
-      log('Characteristic found');
-      characteristicCache = characteristic;
-
-      return characteristicCache;
-    });
-// 	   .then(_ => {
-//         return serviceInstance.getPrimaryService(0xAA64);
-// 		log('getting service...');
-// 		then(newService => {
-// 			log('Service found, getting characteristic...');
-// 			return newService.getCharacteristic(0xAA65);
-// 		})
-// 		.then(newCharacteristic => {
-// 			log('Characteristic found');
-// 			ioCharacteristicCache = newCharacteristic;
-// //			return ioCharacteristicCache;
-// 		})
-//       });
+  characteristicCache = null;
+  charArray = null;
+  gattServer = null;
+  debugPipeInOutCharacteristic = null;
+  coefficientValueCharacteristic = null;
+  fftCharacteristic = null;
 }
 
 // Включение получения уведомлений об изменении характеристики
-function startNotifications(characteristic) {
+async function startNotifications(characteristic) {
   log('Starting notifications...');
-
-  return characteristic.startNotifications().
-      then(() => {
-        log('Notifications started');
-
-        // Добавленная строка
-        characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);	
-      });
+  await characteristic.startNotifications();
+  characteristic.removeEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
+  characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
+  log('Notifications started');
 }
 
 // Вывод в терминал
@@ -431,6 +426,8 @@ function log(data, type = '') {
 
 // Отключиться от подключенного устройства
 function disconnect() {
+  manualDisconnect = true;
+  clearTimeout(reconnectTimer);
   if (deviceCache) {
     log('Disconnecting from "' + deviceCache.name + '" bluetooth device...');
     deviceCache.removeEventListener('gattserverdisconnected',
@@ -446,15 +443,10 @@ function disconnect() {
     }
   }
 
-  // Добавленное условие
-  if (characteristicCache) {
-    characteristicCache.removeEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
-    characteristicCache = null;
-  }
-
-  charArray = null;
-  serviceInstance = null;
+  clearGattCache();
   deviceCache = null;
+  connectButton.disabled = false;
+  disconnectButton.disabled = true;
 }
 
 // Получение fft data
